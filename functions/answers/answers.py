@@ -100,7 +100,9 @@ Last Updated: {metadata.updated_timestamp}
             raise ValueError("Request must include at least a query or a highlight.")
 
     if image_info:
-        image_bytes = image_utils.download_image_from_gcs(image_info.image_storage_path)
+        image_bytes = image_utils.download_image_from_storage(
+            image_info.image_storage_path
+        )
         markdown_response = gemini.call_predict_with_image(
             prompt=prompt, image_bytes=image_bytes, api_key=api_key
         )

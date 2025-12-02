@@ -85,31 +85,33 @@ def import_arxiv_latex_and_pdf(
             f"https://arxiv.org/pdf/{arxiv_id}v{version}"
         )
 
-    # Fetch and process LaTeX source
+    # Fetch and process LaTeX source (may be None if only PDF is available)
     latex_source_bytes = fetch_utils.fetch_latex_source(arxiv_id, version)
 
     latex_string = ""
-    # Create a temporary directory to extract latex source
+    image_path = ""
+    # Create a temporary directory to extract latex source when available
     with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-            latex_utils.extract_tar_gz(latex_source_bytes, temp_dir)
-            main_tex_file = latex_utils.find_main_tex_file(temp_dir)
-            latex_string = latex_utils.inline_tex_files(
-                main_tex_file,
-                remove_comments=True,
-                inline_commands=True,
-            )
-        except (ValueError, FileNotFoundError) as e:
-            raise
+        if latex_source_bytes:
+            try:
+                latex_utils.extract_tar_gz(latex_source_bytes, temp_dir)
+                main_tex_file = latex_utils.find_main_tex_file(temp_dir)
+                latex_string = latex_utils.inline_tex_files(
+                    main_tex_file,
+                    remove_comments=True,
+                    inline_commands=True,
+                )
+            except (ValueError, FileNotFoundError) as e:
+                raise
 
-        if len(latex_string) > MAX_LATEX_CHARACTER_COUNT:
-            raise ValueError(f"Document is too long")
+            if len(latex_string) > MAX_LATEX_CHARACTER_COUNT:
+                raise ValueError(f"Document is too long")
 
         if existing_model_output_file:
             with open(existing_model_output_file, "r") as file:
                 model_output = file.read()
         else:
-            # Format into markdown with Gemini, using both PDF and LaTeX
+            # Format into markdown with Gemini, using both PDF and LaTeX when available.
             model_output = gemini.format_pdf_with_latex(
                 pdf_data=pdf_data, latex_string=latex_string, concepts=concepts
             )
@@ -129,17 +131,14 @@ def import_arxiv_latex_and_pdf(
 
         # Extract images from LaTeX source using info from the parsed LumiDoc
         all_image_contents = _collect_image_contents(lumi_doc)
-        # This call updates the width/height on the image contents and writes
-        # the images referenced in image contents to the cloud bucket.
-        images = image_utils.extract_images_from_latex_source(
-            source_dir=temp_dir,
-            image_contents=all_image_contents,
-            run_locally=run_locally,
-        )
-
-        image_path = ""
-        if len(images) > 0:
-            image_path = images[0].storage_path
+        if latex_source_bytes:
+            images = image_utils.extract_images_from_latex_source(
+                source_dir=temp_dir,
+                image_contents=all_image_contents,
+                run_locally=run_locally,
+            )
+            if len(images) > 0:
+                image_path = images[0].storage_path
 
     return lumi_doc, image_path
 

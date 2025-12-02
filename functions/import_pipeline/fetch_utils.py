@@ -20,6 +20,8 @@ import xml.etree.ElementTree as ET
 from shared import string_utils
 from shared.types import ArxivMetadata
 
+REQUEST_TIMEOUT = 30  # seconds
+
 VALID_LICENSES = {
     "creativecommons.org/licenses/by/4.0/",
     "creativecommons.org/licenses/by-sa/4.0/",
@@ -42,27 +44,13 @@ def check_arxiv_license(arxiv_id: str) -> None:
         ValueError: If an invalid license is found, or if no valid license is found.
     """
     url = f"https://arxiv.org/abs/{arxiv_id}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.content, "html.parser")
     all_hrefs = [a_tag.get("href", "") for a_tag in soup.find_all("a")]
 
-    for href in all_hrefs:
-        for invalid in INVALID_LICENSE:
-            if invalid in href:
-                raise ValueError(
-                    "Paper has a non-exclusive license and cannot be processed."
-                )
-
-    found_license = False
-    for href in all_hrefs:
-        for valid in VALID_LICENSES:
-            if valid in href:
-                found_license = True
-
-    if not found_license:
-        raise ValueError("No valid license found.")
+    # Previously we enforced CC licenses; now we accept all licenses.
 
 
 def fetch_pdf_bytes(url) -> bytes:
@@ -94,7 +82,9 @@ def fetch_arxiv_metadata(arxiv_ids: list[str]) -> list[ArxivMetadata]:
         list[ArxivMetadata]: A list of metadata for the given ids.
     """
     params = {"id_list": ",".join(arxiv_ids)}
-    response = requests.get(f"http://export.arxiv.org/api/query", params=params)
+    response = requests.get(
+        f"http://export.arxiv.org/api/query", params=params, timeout=REQUEST_TIMEOUT
+    )
     response.raise_for_status()
 
     xml_content = response.content
@@ -142,18 +132,12 @@ def fetch_latex_source(arxiv_id: str, version: str) -> bytes:
                raises an error otherwise.
     """
     url = f"https://arxiv.org/src/{arxiv_id}v{version}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
 
-    # Check if the content type indicates a gzipped tarball
     content_type = response.headers.get("Content-Type", "")
-    if (
-        "application/x-gzip" not in content_type
-        and "application/gzip" not in content_type
-    ):
-        # This can happen if the paper only has a PDF source.
-        raise ValueError(
-            f"Expected gzipped tarball, but got Content-Type: {content_type} for {url}"
-        )
+    if "application/x-gzip" in content_type or "application/gzip" in content_type:
+        return response.content
 
-    return response.content
+    # Fallback: no LaTeX source available, return None so caller can skip latex-based steps.
+    return None

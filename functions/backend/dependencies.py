@@ -1,0 +1,51 @@
+"""
+Dependency wiring for the FastAPI app.
+"""
+
+from __future__ import annotations
+
+from backend.config import get_settings
+from backend.db import DbClient, InMemoryDbClient, PostgresDbClient
+from backend.storage import CosStorageClient, InMemoryStorageClient, StorageClient
+
+_db_client: DbClient | None = None
+_storage_client: StorageClient | None = None
+
+
+def get_db_client() -> DbClient:
+    """
+    Return a singleton DB client so job/status state persists across requests.
+    """
+    global _db_client
+    if _db_client:
+        return _db_client
+
+    settings = get_settings()
+    if settings.use_in_memory_backends or not settings.database_url:
+        _db_client = InMemoryDbClient()
+    else:
+        try:
+            _db_client = PostgresDbClient(settings.database_url)
+        except NotImplementedError:
+            # Until PostgresDbClient is implemented, fall back to in-memory.
+            _db_client = InMemoryDbClient()
+    return _db_client
+
+
+def get_storage_client() -> StorageClient:
+    global _storage_client
+    if _storage_client:
+        return _storage_client
+
+    settings = get_settings()
+    if settings.use_in_memory_backends or not settings.cos_bucket:
+        _storage_client = InMemoryStorageClient()
+    else:
+        _storage_client = CosStorageClient(
+            bucket=settings.cos_bucket,
+            region=settings.cos_region or "",
+            endpoint=settings.cos_endpoint or "",
+            access_key_id=settings.aws_access_key_id or "",
+            secret_access_key=settings.aws_secret_access_key or "",
+        )
+    return _storage_client

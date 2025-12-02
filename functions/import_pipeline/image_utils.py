@@ -13,28 +13,142 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
 
 import os
 import re
 import shutil
 import warnings
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Protocol
+from typing import Tuple
+import logging
 from PIL import Image
 import pypdfium2 as pdfium
 
-from firebase_admin import storage
+try:
+    from firebase_admin import storage as gcs_storage  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    gcs_storage = None
+
+import boto3
+
+logger = logging.getLogger(__name__)
 
 from shared.types import ImageMetadata
 from shared.lumi_doc import ImageContent
 
-# TODO(ellenj): Update this eventually to save to the google cloud bucket.
 LOCAL_IMAGE_BUCKET_BASE = "../local_image_bucket/"
 TEMPORARY_EXTRACTION_DIR = "temp_extraction"
 
 
-def download_image_from_gcs(storage_path: str) -> bytes:
+class StorageClient(Protocol):
+    """Defines the minimal storage operations used in the import pipeline."""
+
+    def download_bytes(self, path: str) -> bytes:
+        ...
+
+    def upload_file(self, src_path: str, dest_path: str) -> None:
+        ...
+
+
+@dataclass
+class InMemoryStorageClient:
+    """Simple in-memory/no-op storage used for tests when patched."""
+
+    download_result: bytes = b""
+    uploads: list[tuple[str, str]] = None  # list of (src, dest)
+
+    def __post_init__(self):
+        if self.uploads is None:
+            self.uploads = []
+
+    def download_bytes(self, path: str) -> bytes:
+        return self.download_result
+
+    def upload_file(self, src_path: str, dest_path: str) -> None:
+        self.uploads.append((src_path, dest_path))
+
+
+@dataclass
+class CosStorageClient:
+    """Tencent COS (S3-compatible) storage client."""
+
+    bucket: str
+    region: str
+    endpoint: str
+    access_key_id: str
+    secret_access_key: str
+
+    def __post_init__(self):
+        config = boto3.session.Config(
+            s3={"addressing_style": "virtual"},
+            signature_version="s3v4",
+        )
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=self.endpoint,
+            region_name=self.region,
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            config=config,
+        )
+
+    def download_bytes(self, path: str) -> bytes:
+        resp = self._client.get_object(Bucket=self.bucket, Key=path)
+        return resp["Body"].read()
+
+    def upload_file(self, src_path: str, dest_path: str) -> None:
+        self._client.upload_file(src_path, self.bucket, dest_path)
+
+
+@dataclass
+class GcsStorageClient:
+    """Google Cloud Storage client, retained for backward compatibility."""
+
+    storage_module: any
+
+    def download_bytes(self, path: str) -> bytes:
+        cloud_bucket = self.storage_module.bucket()
+        blob = cloud_bucket.blob(path)
+        return blob.download_as_bytes()
+
+    def upload_file(self, src_path: str, dest_path: str) -> None:
+        cloud_bucket = self.storage_module.bucket()
+        blob = cloud_bucket.blob(dest_path)
+        blob.upload_from_filename(src_path)
+
+
+def get_cloud_storage_client() -> StorageClient:
+    """
+    Returns a storage client based on environment settings.
+
+    Prefers COS/S3 (COS_BUCKET env), otherwise falls back to Firebase GCS
+    if available. Raises if neither is configured.
+    """
+    cos_bucket = os.environ.get("COS_BUCKET")
+    cos_region = os.environ.get("COS_REGION")
+    cos_endpoint = os.environ.get("COS_ENDPOINT")
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    if cos_bucket and cos_region and cos_endpoint and access_key and secret_key:
+        return CosStorageClient(
+            bucket=cos_bucket,
+            region=cos_region,
+            endpoint=cos_endpoint,
+            access_key_id=access_key,
+            secret_access_key=secret_key,
+        )
+    if gcs_storage:
+        return GcsStorageClient(storage_module=gcs_storage)
+    raise RuntimeError(
+        "No cloud storage configured. Set COS_* env vars or install firebase_admin."
+    )
+
+
+def download_image_from_storage(storage_path: str, storage_client: StorageClient | None = None) -> bytes:
     """
     Downloads an image from Google Cloud Storage.
 
@@ -48,12 +162,10 @@ def download_image_from_gcs(storage_path: str) -> bytes:
         Exception: If the image cannot be downloaded.
     """
     try:
-        cloud_bucket = storage.bucket()
-        blob = cloud_bucket.blob(storage_path)
-        image_bytes = blob.download_as_bytes()
-        return image_bytes
+        client = storage_client or get_cloud_storage_client()
+        return client.download_bytes(storage_path)
     except Exception as e:
-        warnings.warn(f"Could not download image from GCS at {storage_path}: {e}")
+        warnings.warn(f"Could not download image from storage at {storage_path}: {e}")
         raise
 
 def check_target_in_path(full_path: str, target: str) -> bool:
@@ -92,7 +204,12 @@ def check_target_in_path(full_path: str, target: str) -> bool:
 
     return re.search(pattern, full_path) is not None
 
-def extract_images_from_latex_source(source_dir: str, image_contents: List[ImageContent], run_locally: bool = False) -> List[ImageMetadata]:
+def extract_images_from_latex_source(
+    source_dir: str,
+    image_contents: List[ImageContent],
+    run_locally: bool = False,
+    storage_client: StorageClient | None = None,
+) -> List[ImageMetadata]:
     """
     Finds image files from the LaTeX source directory by searching all
     subdirectories, copies them to the image bucket, and returns their metadata.
@@ -191,9 +308,17 @@ def extract_images_from_latex_source(source_dir: str, image_contents: List[Image
                     shutil.copy(source_image_path, destination_full_path)
                 else:
                     # Upload to cloud storage
-                    cloud_bucket = storage.bucket()
-                    blob = cloud_bucket.blob(storage_path)
-                    blob.upload_from_filename(source_image_path)
+                    client = storage_client or get_cloud_storage_client()
+                    try:
+                        client.upload_file(source_image_path, storage_path)
+                    except Exception as e:
+                        warnings.warn(
+                            f"Failed to upload {source_image_path} to {storage_path}: {e}"
+                        )
+                        logger.exception(
+                            "Image upload failed for %s to %s", source_image_path, storage_path
+                        )
+                        continue
                 
                 # Update the width and height on the existing ImageContent object
                 image_content.width = width

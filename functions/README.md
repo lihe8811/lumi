@@ -1,160 +1,69 @@
-# Lumi Firebase Cloud Functions
+# Lumi Backend (FastAPI)
 
-Defines cloud functions for Lumi backend.
+This directory hosts the backend for Lumi, now targeting deployment on an Ubuntu server with Caddy, FastAPI, PostgreSQL, and Tencent COS (S3-compatible) storage. The legacy Firebase Functions flow is being refactored into HTTP APIs and a worker model.
 
-## Set-up
+## Prerequisites
+- Python 3.11 (recommended)
+- Optional but expected for production: PostgreSQL (TencentDB) and Tencent COS credentials
 
-1. Make sure to be in the functions directory:
+## Environment variables (`functions/.env`)
+- `API_PREFIX=/api`
+- `DATABASE_URL=postgresql://lumi_user:change_me_password@db-host:5432/lumi`
+- `COS_BUCKET=your-cos-bucket-name`
+- `COS_REGION=ap-region`
+- `COS_ENDPOINT=https://cos.ap-region.myqcloud.com`
+- `AWS_ACCESS_KEY_ID=your-cos-access-key`
+- `AWS_SECRET_ACCESS_KEY=your-cos-secret-key`
+- `GEMINI_API_KEY=your-gemini-key`
+- `LUMI_USE_IN_MEMORY_BACKENDS=false`
+- Optional queue settings: `REDIS_URL=redis://localhost:6379/0`
 
-```
+Set `LUMI_USE_IN_MEMORY_BACKENDS=true` to run locally without Postgres/COS.
+
+## Install and run the API
+```bash
 cd functions
-```
-
-2. Create and activate a virtual env in this functions directory:
-
-```
 python3 -m venv venv
 source venv/bin/activate
-```
-
-3. To install dependencies:
-
-```
 pip install -r requirements.txt
+
+# Start API on :8000
+uvicorn backend.app:app --reload --port 8000
 ```
 
-4. Create an api_config.py file and add your API key (see TODOs in example file).
+## Quick checks
+- `POST /api/request_arxiv_doc_import` with `{"arxiv_id":"1234.56789","version":"1"}` → job id.
+- `GET /api/job-status/{job_id}` → status (`WAITING` in the in-memory stub).
+- `GET /api/sign-url?path=test/foo.png` → presigned URL stub (uses configured storage backend).
 
-```
-cp models/api_config.example.py models/api_config.py
-```
-
-## Running locally
-
-To run the local emulator:
-
-```
-firebase emulators:start
-```
-
-To run with local emulator data:
-
-```
-firebase emulators:start --import .local_emulator_data
-```
-
-To view the hard-coded collection in the emulator, navigate to: http://localhost:4201/#/collections/test_collection
-
-## Deployment
-
-To deploy functions:
-
-```
-firebase deploy --only functions
-```
-
-## Testing
-
-To run unittests:
-
-```
-python3 -m unittest discover -p "*_test.py"
-```
-
-To run the integration test:
-
-```
-FUNCTION_RUN_MODE=testing firebase emulators:exec 'python3 -m unittest discover -p "main_integration.py"'
-```
-
-## Utility Scripts
-
-This directory contains several Python scripts to help manage Firestore data.
-
-(See [instructions](https://firebase.google.com/docs/admin/setup) for setting up Firebaes Admin SDK credentials.)
-
-### `script_firebase_import.py`
-
-Imports papers into Firestore from a CSV file. The script (1) triggers the `start_arxiv_doc_import` function for each paper, which writes the initial doc to Firestore, triggering the document import, and (2) adds the paper ID to the specified collection.
-
-**Usage:**
-
+## Tests
 ```bash
-python3 script_firebase_import.py --csv_file <path_to_csv> [--delay <seconds>]
+cd functions
+python -m unittest discover backend/tests
 ```
 
-- `--csv_file`: (Required) Path to the CSV file. The CSV must contain 'arxiv_id' and 'collection' headers.
-- `--delay`: (Optional) Seconds to wait between importing each paper. Defaults to 10.
+## Notes on refactor
+- Storage is abstracted for Tencent COS (S3) with an in-memory fallback; GCS compatibility remains for legacy flows.
+- Database is abstracted; a real `PostgresDbClient` still needs to be implemented (SQLAlchemy models/migrations). In-memory DB supports tests and local runs.
+- The import/summarization pipeline should run in a worker process/queue that updates job status via the DB and writes artifacts to COS.
 
----
-
-### `script_firebase_update_collections.py`
-
-Updates collection metadata in Firestore based on a local configuration within the script itself. You must edit the `COLLECTIONS` list in the script file before running it.
-
-**Usage:**
-
-```bash
-python3 script_firebase_update_collections.py [--overwrite_paper_ids]
+## Deploying on Ubuntu with Caddy (sketch)
+1) Run API via systemd: `uvicorn backend.app:app --host 127.0.0.1 --port 8000` with `.env` loaded.  
+2) Frontend: build in `frontend/` (`npm run build:prod`) and serve `/var/www/lumi` via Caddy.  
+3) Sample Caddyfile:
+```
+lumi.example.com {
+  root * /var/www/lumi
+  file_server
+  try_files {path} /index.html
+  reverse_proxy /api/* 127.0.0.1:8000
+  encode zstd gzip
+  header Cache-Control "public, max-age=31536000, immutable" {
+    path *.js *.css *.png *.svg
+  }
+  tls you@example.com
+}
 ```
 
-- `--overwrite_paper_ids`: (Optional) If set, this will overwrite the `paper_ids` array in the Firestore collection with the one defined in the script. Use with caution. Defaults to `False`.
-
----
-
-### `script_firebase_list.py`
-
-Lists document IDs from the `arxiv_docs` collection that match a specific `loadingStatus`.
-
-**Usage:**
-
-```bash
-python3 script_firebase_list.py --loading_status <status> [--output_file]
-```
-
-- `--loading_status`: (Required) The loading status to filter by (e.g., `WAITING`, `SUCCESS` - see the LoadingStatus Enum in shared/types.py).
-- `--output_file`: (Optional) If set, writes the list of paper IDs to a timestamped `.txt` file.
-
----
-
-### `script_firebase_list_all.py`
-
-Runs `script_firebase_list.py` for every status in `LoadingStatus`.
-
-**Usage:**
-
-```bash
-python3 script_firebase_list_all.py
-```
-
-This script takes no arguments.
-
----
-
-### `script_firebase_check_status.py`
-
-Checks the current `loadingStatus` for a list of paper IDs provided in a text file.
-
-**Usage:**
-
-```bash
-python3 script_firebase_check_status.py --paper_ids_file <path_to_txt>
-```
-
-- `--paper_ids_file`: (Required) Path to a text file containing a list of paper IDs, one per line.
-
----
-
-### `script_firebase_update_status.py`
-
-Updates the `loadingStatus` for a list of papers provided in a text file.
-
-**Usage:**
-
-```bash
-python3 script_firebase_update_status.py --paper_ids_file <path_to_txt> --status <new_status>
-```
-
-- `--paper_ids_file`: (Required) Path to a text file containing a list of paper IDs, one per line.
-- `--status`: (Required) The new `LoadingStatus` to set for the papers.
-- `--delay`: (Optional) Seconds to wait between importing each paper. Defaults to 0.
+## Frontend (pointer)
+See `frontend/` for the SPA. During API refactor, the frontend will be moved from Firebase callables to HTTP fetches against `/api/*` and will fetch presigned COS URLs for assets.
