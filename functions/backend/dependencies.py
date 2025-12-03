@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from backend.config import get_settings
 from backend.db import DbClient, InMemoryDbClient, PostgresDbClient
+from backend.queue import InMemoryJobQueue, JobQueue, RedisJobQueue
 from backend.storage import CosStorageClient, InMemoryStorageClient, StorageClient
 
 _db_client: DbClient | None = None
 _storage_client: StorageClient | None = None
+_queue_client: JobQueue | None = None
 
 
 def get_db_client() -> DbClient:
@@ -49,3 +51,22 @@ def get_storage_client() -> StorageClient:
             secret_access_key=settings.aws_secret_access_key or "",
         )
     return _storage_client
+
+
+def get_queue_client() -> JobQueue:
+    """
+    Return a singleton queue client for dispatching jobs to workers.
+    """
+    global _queue_client
+    if _queue_client:
+        return _queue_client
+
+    settings = get_settings()
+    if settings.redis_url:
+        _queue_client = RedisJobQueue(
+            url=settings.redis_url,
+            queue_key=settings.redis_queue_key,
+        )
+    else:
+        _queue_client = InMemoryJobQueue()
+    return _queue_client

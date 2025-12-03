@@ -33,7 +33,7 @@ import {
   TUTORIAL_IMAGE_QUESTION_IMAGE_PATH,
   TUTORIAL_QUESTION_IMAGE_PATH,
 } from "../../../shared/constants";
-import { FirebaseService } from "../../../services/firebase.service";
+import { BackendApiService } from "../../../services/backend_api.service";
 import { SettingsService } from "../../../services/settings.service";
 
 /**
@@ -44,7 +44,7 @@ export class TutorialDialog extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
 
   private readonly dialogService = core.getService(DialogService);
-  private readonly firebaseService = core.getService(FirebaseService);
+  private readonly backendApiService = core.getService(BackendApiService);
   private readonly settingsService = core.getService(SettingsService);
 
   private handleClose() {
@@ -58,7 +58,12 @@ export class TutorialDialog extends MobxLitElement {
   }
 
   private getImageUrl(path: string) {
-    return this.firebaseService.getDownloadUrl(path);
+    if (path.startsWith("assets/")) {
+      const prefix = (process.env.URL_PREFIX ?? "/").replace(/\/+$/, "");
+      const assetPath = path.startsWith("/") ? path : `/${path}`;
+      return `${prefix}${assetPath}`;
+    }
+    return this.backendApiService.signUrl(path, "get");
   }
 
   private renderHideForeverButton() {

@@ -18,6 +18,7 @@ import { GitRevisionPlugin } from "git-revision-webpack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
 import * as path from "path";
 import * as webpack from "webpack";
+import CopyWebpackPlugin from "copy-webpack-plugin";
 
 const gitRevisionPlugin = new GitRevisionPlugin({ branch: true });
 
@@ -63,7 +64,8 @@ const config: webpack.Configuration = {
       base: process.env.URL_PREFIX ?? "/",
     }),
     new webpack.DefinePlugin({
-      "process.env.URL_PREFIX": process.env.URL_PREFIX ?? "'/'",
+      "process.env.URL_PREFIX": JSON.stringify(process.env.URL_PREFIX ?? "/"),
+      "process.env.API_BASE_URL": JSON.stringify(process.env.API_BASE_URL ?? ""),
       GIT_VERSION: JSON.stringify(gitRevisionPlugin.version()),
       GIT_COMMIT_HASH: JSON.stringify(gitRevisionPlugin.commithash()),
       GIT_BRANCH: JSON.stringify(gitRevisionPlugin.branch()),
@@ -73,6 +75,15 @@ const config: webpack.Configuration = {
     }),
     new webpack.ProvidePlugin({
       process: "process/browser",
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, "../assets"),
+          to: "assets",
+          noErrorOnMissing: true,
+        },
+      ],
     }),
   ],
   resolve: {

@@ -126,6 +126,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-timeout"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274, upload-time = "2024-11-06T16:41:39.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233, upload-time = "2024-11-06T16:41:37.9Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "18.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -436,44 +445,6 @@ wheels = [
 ]
 
 [[package]]
-name = "firebase-admin"
-version = "6.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cachecontrol" },
-    { name = "google-api-core", extra = ["grpc"], marker = "platform_python_implementation != 'PyPy'" },
-    { name = "google-api-python-client" },
-    { name = "google-cloud-firestore", marker = "platform_python_implementation != 'PyPy'" },
-    { name = "google-cloud-storage" },
-    { name = "pyjwt", extra = ["crypto"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/d8/4230b0770a2cd9d4de53bb1f0a17fa204716a9b271bc3be1fb109dfb8b9d/firebase_admin-6.8.0.tar.gz", hash = "sha256:24a9870219cfd6578586357858e00758aea26a39df74c53be5d803f5654d883e", size = 112211, upload-time = "2025-04-24T18:53:24.956Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/e4/a4fea0c28787e6fadfdc6bf76f497c8136fdbb915f2942de1070918c1202/firebase_admin-6.8.0-py3-none-any.whl", hash = "sha256:84d5fd82859c4d27b63338c3fe9724667dfe400aa2fd9fef0efffbf6e23bca82", size = 134188, upload-time = "2025-04-24T18:53:23.182Z" },
-]
-
-[[package]]
-name = "firebase-functions"
-version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cloudevents" },
-    { name = "firebase-admin" },
-    { name = "flask" },
-    { name = "flask-cors" },
-    { name = "functions-framework" },
-    { name = "google-cloud-firestore" },
-    { name = "google-events" },
-    { name = "pyjwt", extra = ["crypto"] },
-    { name = "pyyaml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d1/73/3a450cdf7651b10a13bc063e092dbf59322d4422151e79a3a845e0d0a0dd/firebase_functions-0.4.2.tar.gz", hash = "sha256:58a41063999ea81e28e2c28bff8ab5cd3e07bdf377036693b6dca4f38e51911a", size = 69711, upload-time = "2024-07-01T23:40:32.028Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/1c/7647e51feb69bf171c4814b68b7718eb2470284cdd574ab47f1b294bef44/firebase_functions-0.4.2-py3-none-any.whl", hash = "sha256:907af794035277a9b2caa0cd9adb737c4dd748d25d911c8792a810b1a6cdb1ac", size = 81389, upload-time = "2024-07-01T23:40:30.59Z" },
-]
-
-[[package]]
 name = "flask"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -606,8 +577,6 @@ dependencies = [
     { name = "deprecation" },
     { name = "et-xmlfile" },
     { name = "fastapi" },
-    { name = "firebase-admin" },
-    { name = "firebase-functions" },
     { name = "flask" },
     { name = "flask-cors" },
     { name = "frozenlist" },
@@ -669,6 +638,7 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "pytz" },
     { name = "pyyaml" },
+    { name = "redis" },
     { name = "regex" },
     { name = "requests" },
     { name = "rsa" },
@@ -715,8 +685,6 @@ requires-dist = [
     { name = "deprecation", specifier = "==2.1.0" },
     { name = "et-xmlfile", specifier = "==2.0.0" },
     { name = "fastapi", specifier = "==0.115.6" },
-    { name = "firebase-admin", specifier = "==6.8.0" },
-    { name = "firebase-functions", specifier = "==0.4.2" },
     { name = "flask", specifier = "==3.1.0" },
     { name = "flask-cors", specifier = "==5.0.1" },
     { name = "frozenlist", specifier = "==1.7.0" },
@@ -778,6 +746,7 @@ requires-dist = [
     { name = "python-dateutil", specifier = "==2.9.0.post0" },
     { name = "pytz", specifier = "==2025.2" },
     { name = "pyyaml", specifier = "==6.0.2" },
+    { name = "redis", specifier = "==5.2.1" },
     { name = "regex", specifier = "==2024.11.6" },
     { name = "requests", specifier = "==2.32.3" },
     { name = "rsa", specifier = "==4.9.1" },
@@ -2020,11 +1989,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/ad/689f02752eeec26aed679477e80e632ef1b682313be70793d798c1d5fc8f/PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb", size = 22997, upload-time = "2024-11-28T03:43:27.893Z" },
 ]
 
-[package.optional-dependencies]
-crypto = [
-    { name = "cryptography" },
-]
-
 [[package]]
 name = "pyparsing"
 version = "3.2.3"
@@ -2126,6 +2090,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fe/0f/25911a9f080464c59fab9027482f822b86bf0608957a5fcc6eaac85aa515/PyYAML-6.0.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:68ccc6023a3400877818152ad9a1033e3db8625d899c72eacb5a668902e4d652", size = 751597, upload-time = "2024-08-06T20:32:56.985Z" },
     { url = "https://files.pythonhosted.org/packages/14/0d/e2c3b43bbce3cf6bd97c840b46088a3031085179e596d4929729d8d68270/PyYAML-6.0.2-cp313-cp313-win32.whl", hash = "sha256:bc2fa7c6b47d6bc618dd7fb02ef6fdedb1090ec036abab80d4681424b84c1183", size = 140527, upload-time = "2024-08-06T20:33:03.001Z" },
     { url = "https://files.pythonhosted.org/packages/fa/de/02b54f42487e3d3c6efb3f89428677074ca7bf43aae402517bc7cca949f3/PyYAML-6.0.2-cp313-cp313-win_amd64.whl", hash = "sha256:8388ee1976c416731879ac16da0aff3f63b286ffdd57cdeb95f3f2e085687563", size = 156446, upload-time = "2024-08-06T20:33:04.33Z" },
+]
+
+[[package]]
+name = "redis"
+version = "5.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/47/da/d283a37303a995cd36f8b92db85135153dc4f7a8e4441aa827721b442cfb/redis-5.2.1.tar.gz", hash = "sha256:16f2e22dff21d5125e8481515e386711a34cbec50f0e44413dd7d9c060a54e0f", size = 4608355, upload-time = "2024-12-06T09:50:41.956Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/5f/fa26b9b2672cbe30e07d9a5bdf39cf16e3b80b42916757c5f92bca88e4ba/redis-5.2.1-py3-none-any.whl", hash = "sha256:ee7e1056b9aea0f04c6c2ed59452947f34c4940ee025f5dd83e6a6418b6989e4", size = 261502, upload-time = "2024-12-06T09:50:39.656Z" },
 ]
 
 [[package]]

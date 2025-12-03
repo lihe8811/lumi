@@ -12,11 +12,12 @@ from dataclasses import asdict
 from typing import Optional
 
 from backend.db import DbClient, JobRecord
-from backend.dependencies import get_db_client, get_storage_client
+from backend.dependencies import get_db_client, get_queue_client, get_storage_client
 from backend.config import get_settings
 from import_pipeline import fetch_utils, import_pipeline, summaries
 from models import extract_concepts as extract_concepts_util
 from models import api_config
+from backend.queue import JobQueue
 from shared.types import LoadingStatus
 from shared.json_utils import convert_keys
 import logging
@@ -147,23 +148,62 @@ def process_job(job: JobRecord, db: DbClient) -> None:
 
 def process_once(db: Optional[DbClient] = None) -> bool:
     """
-    Fetch and process one waiting job. Returns True if a job was processed.
+    Deprecated helper kept for backward compatibility in tests.
+    """
+    return process_next(db=db, queue=None, block=False, timeout=None)
+
+
+def process_next(
+    *,
+    db: Optional[DbClient] = None,
+    queue: Optional[JobQueue] = None,
+    block: bool = True,
+    timeout: Optional[int] = None,
+) -> bool:
+    """
+    Fetch and process one job from the queue (or DB fallback). Returns True if processed.
     """
     db = db or get_db_client()
-    job = db.fetch_next_waiting_job()
-    if not job:
-        return False
+    queue = queue or get_queue_client()
+
+    job_id = queue.dequeue(block=block, timeout=timeout) if queue else None
+    job: Optional[JobRecord] = None
+
+    if job_id:
+        job = db.get_job(job_id)
+        if not job:
+            logger.warning("Received job_id %s from queue but no DB record found", job_id)
+            return False
+        # Claim the job so other workers skip it.
+        if hasattr(db, "claim_next_waiting_job"):
+            # For Postgres, also ensure status flips to prevent reuse.
+            if job.status == LoadingStatus.WAITING:
+                claimed = db.claim_next_waiting_job()
+                if claimed and claimed.job_id == job.job_id:
+                    job = claimed
+    else:
+        # Fallback to legacy polling for any WAITING jobs that were never queued.
+        job = db.claim_next_waiting_job() if hasattr(db, "claim_next_waiting_job") else db.fetch_next_waiting_job()
+        if not job:
+            return False
+
     process_job(job, db)
     return True
 
 
 def run_loop(poll_interval_seconds: float = 2.0) -> None:
     """
-    Simple polling loop. Intended to be run under systemd/supervisor for now.
+    Simple polling loop that blocks on the queue. Intended to be run under systemd/supervisor.
     """
     db = get_db_client()
+    queue = get_queue_client()
     while True:
-        processed = process_once(db=db)
+        if hasattr(db, "requeue_stale_locks"):
+            try:
+                db.requeue_stale_locks(lock_timeout_seconds=900)
+            except Exception:
+                logger.exception("Failed to requeue stale locks")
+        processed = process_next(db=db, queue=queue, block=True, timeout=int(poll_interval_seconds))
         if not processed:
             time.sleep(poll_interval_seconds)
 

@@ -36,6 +36,10 @@ class BackendApiTests(unittest.TestCase):
         self.assertIn("url", response.json())
         self.assertIn("foo/bar.png", response.json()["url"])
 
+    def test_get_lumi_doc_not_found(self):
+        resp = self.client.get("/api/lumi-doc/doesnotexist/1")
+        self.assertEqual(resp.status_code, 404)
+
     def test_save_user_feedback(self):
         response = self.client.post(
             "/api/save_user_feedback",

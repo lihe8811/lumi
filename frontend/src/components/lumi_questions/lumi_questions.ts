@@ -51,11 +51,10 @@ import {
   INPUT_DEBOUNCE_MS,
   MAX_QUERY_INPUT_LENGTH,
 } from "../../shared/constants";
-import { getLumiResponseCallable } from "../../shared/callables";
+import { BackendApiService } from "../../services/backend_api.service";
 import { createTemporaryAnswer } from "../../shared/answer_utils";
 import { RouterService } from "../../services/router.service";
 import { SnackbarService } from "../../services/snackbar.service";
-import { FirebaseService } from "../../services/firebase.service";
 import { LightMobxLitElement } from "../light_mobx_lit_element/light_mobx_lit_element";
 import { SIDEBAR_PERSONAL_SUMMARY_TOOLTIP_TEXT } from "../../shared/constants_helper_text";
 import { SettingsService } from "../../services/settings.service";
@@ -69,7 +68,7 @@ export class LumiQuestions extends LightMobxLitElement {
   private readonly analyticsService = core.getService(AnalyticsService);
   private readonly dialogService = core.getService(DialogService);
   private readonly documentStateService = core.getService(DocumentStateService);
-  private readonly firebaseService = core.getService(FirebaseService);
+  private readonly backendApiService = core.getService(BackendApiService);
   private readonly floatingPanelService = core.getService(FloatingPanelService);
   private readonly historyService = core.getService(HistoryService);
   private readonly routerService = core.getService(RouterService);
@@ -123,6 +122,10 @@ export class LumiQuestions extends LightMobxLitElement {
     if (!this.query || !lumiDoc || this.historyService.isAnswerLoading) {
       return;
     }
+    if (!lumiDoc.metadata?.paperId || !lumiDoc.metadata?.version) {
+      this.snackbarService.show("Error: Document metadata missing.");
+      return;
+    }
     this.analyticsService.trackAction(AnalyticsAction.HEADER_EXECUTE_SEARCH);
 
     const docId = this.routerService.getActiveRouteParams()["document_id"];
@@ -136,11 +139,10 @@ export class LumiQuestions extends LightMobxLitElement {
     const queryToClear = this.query;
 
     try {
-      const response = await getLumiResponseCallable(
-        this.firebaseService.functions,
-        lumiDoc,
-        request,
-        this.settingsService.apiKey.value
+      const response = await this.backendApiService.getLumiResponse(
+        lumiDoc.metadata.paperId,
+        lumiDoc.metadata.version,
+        request
       );
       this.historyService.addAnswer(docId, response);
       this.query = "";

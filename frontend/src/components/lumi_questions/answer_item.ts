@@ -89,7 +89,7 @@ export class AnswerItem extends LightMobxLitElement {
         return;
       }
       const referencedIds = getReferencedSpanIdsFromContent(
-        this.answer.responseContent
+        this.answer.responseContent ?? []
       );
       this.referencedSpans = referencedIds
         .map((id) => this.lumiDocManager!.getSpanById(id))
@@ -254,7 +254,7 @@ export class AnswerItem extends LightMobxLitElement {
   }
 
   private getTitleText() {
-    const { query, highlight, image } = this.answer.request;
+    const { query, highlight, image } = this.answer.request || {};
     if (query) return query;
 
     if (image) {
@@ -292,6 +292,8 @@ export class AnswerItem extends LightMobxLitElement {
 
   override render() {
     const isAnswerCollapsed = this.isCollapsed();
+    const request = this.answer.request || {};
+    const questionText = request.query ?? "";
 
     const classes = {
       "history-item": true,
@@ -311,7 +313,6 @@ export class AnswerItem extends LightMobxLitElement {
       "question-text": true,
       "is-collapsed": isAnswerCollapsed,
     };
-
     return html`
       <style>
         ${styles}
@@ -330,7 +331,7 @@ export class AnswerItem extends LightMobxLitElement {
               ></pr-icon-button>
               <span
                 class=${classMap(questionTextClasses)}
-                title=${this.answer.request.query}
+                title=${questionText}
               >
                 ${this.getTitleText()} ${this.renderInfoIcon()}
               </span>

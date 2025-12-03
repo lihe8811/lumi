@@ -26,6 +26,9 @@ class DbClient(Protocol):
     def get_job(self, job_id: str) -> Optional["JobRecord"]:
         ...
 
+    def claim_next_waiting_job(self) -> Optional["JobRecord"]:
+        ...
+
     def save_metadata(self, arxiv_id: str, metadata: dict) -> None:
         ...
 
@@ -61,6 +64,12 @@ class DbClient(Protocol):
     ) -> Optional[tuple[dict, dict]]:
         ...
 
+    def list_docs(self, limit: int = 100) -> list[tuple[str, str, dict]]:
+        ...
+
+    def requeue_stale_locks(self, lock_timeout_seconds: float = 600) -> int:
+        ...
+
 
 @dataclass
 class JobRecord:
@@ -70,6 +79,7 @@ class JobRecord:
     status: LoadingStatus
     stage: str = "WAITING"
     progress_percent: float = 0.0
+    locked_at: Optional[float] = None
     created_at: float = field(default_factory=lambda: time.time())
     updated_at: float = field(default_factory=lambda: time.time())
 
@@ -110,6 +120,7 @@ class InMemoryDbClient:
         self.metadata: Dict[str, dict] = {}
         self.feedback: Dict[str, FeedbackRecord] = {}
         self.docs: Dict[tuple[str, str], tuple[dict, dict]] = {}
+        self.locked: set[str] = set()
 
     def create_import_job(
         self, arxiv_id: str, version: str | None = None
@@ -150,6 +161,15 @@ class InMemoryDbClient:
                 return job
         return None
 
+    def claim_next_waiting_job(self) -> Optional[JobRecord]:
+        for job in self.jobs.values():
+            if job.status == LoadingStatus.WAITING and job.job_id not in self.locked:
+                job.status = LoadingStatus.SUMMARIZING
+                job.locked_at = time.time()
+                self.locked.add(job.job_id)
+                return job
+        return None
+
     def update_job_status(self, job_id: str, status: LoadingStatus) -> None:
         job = self.jobs.get(job_id)
         if job:
@@ -185,6 +205,33 @@ class InMemoryDbClient:
     ) -> Optional[tuple[dict, dict]]:
         return self.docs.get((arxiv_id, version))
 
+    def list_docs(self, limit: int = 100) -> list[tuple[str, str, dict]]:
+        items: list[tuple[str, str, dict]] = []
+        for (arxiv_id, version), (doc_json, summaries_json) in self.docs.items():
+            meta = doc_json.get("metadata", {})
+            items.append((arxiv_id, version, meta))
+            if len(items) >= limit:
+                break
+        return items
+
+    def requeue_stale_locks(self, lock_timeout_seconds: float = 600) -> int:
+        now = time.time()
+        requeued = 0
+        for job in self.jobs.values():
+            if (
+                job.status == LoadingStatus.SUMMARIZING
+                and job.stage == "CLAIMED"
+                and job.locked_at
+                and now - job.locked_at > lock_timeout_seconds
+            ):
+                job.status = LoadingStatus.WAITING
+                job.stage = "WAITING"
+                job.progress_percent = 0.0
+                job.locked_at = None
+                job.updated_at = now
+                requeued += 1
+        return requeued
+
 
 class PostgresDbClient:
     """
@@ -208,6 +255,7 @@ class PostgresDbClient:
             status=LoadingStatus(job.status),
             stage=job.stage,
             progress_percent=job.progress_percent,
+            locked_at=job.locked_at,
             created_at=job.created_at,
             updated_at=job.updated_at,
         )
@@ -252,6 +300,52 @@ class PostgresDbClient:
             if not job:
                 return None
             return self._to_job_record(job)
+
+    def claim_next_waiting_job(self) -> Optional[JobRecord]:
+        now = time.time()
+        with self.Session() as session:
+            stmt = (
+                select(JobRow)
+                .where(JobRow.status == LoadingStatus.WAITING.value)
+                .order_by(JobRow.created_at.asc())
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            job = session.execute(stmt).scalar_one_or_none()
+            if not job:
+                return None
+            job.status = LoadingStatus.SUMMARIZING.value
+            job.stage = "CLAIMED"
+            job.locked_at = now
+            job.updated_at = now
+            session.commit()
+            session.refresh(job)
+            return self._to_job_record(job)
+
+    def requeue_stale_locks(self, lock_timeout_seconds: float = 600) -> int:
+        cutoff = time.time() - lock_timeout_seconds
+        with self.Session() as session:
+            updated = (
+                session.query(JobRow)
+                .filter(
+                    JobRow.status == LoadingStatus.SUMMARIZING.value,
+                    JobRow.stage == "CLAIMED",
+                    JobRow.locked_at != None,
+                    JobRow.locked_at < cutoff,
+                )
+                .update(
+                    {
+                        JobRow.status: LoadingStatus.WAITING.value,
+                        JobRow.stage: "WAITING",
+                        JobRow.progress_percent: 0.0,
+                        JobRow.locked_at: None,
+                        JobRow.updated_at: time.time(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            session.commit()
+            return updated or 0
 
     def update_job_status(self, job_id: str, status: LoadingStatus) -> None:
         with self.Session() as session:
@@ -341,6 +435,20 @@ class PostgresDbClient:
                 return None
             return row.lumi_doc, row.summaries
 
+    def list_docs(self, limit: int = 100) -> list[tuple[str, str, dict]]:
+        with self.Session() as session:
+            rows = (
+                session.query(PaperVersionRow)
+                .order_by(PaperVersionRow.updated_at.desc())
+                .limit(limit)
+                .all()
+            )
+            results: list[tuple[str, str, dict]] = []
+            for row in rows:
+                meta = row.lumi_doc.get("metadata", {}) if row.lumi_doc else {}
+                results.append((row.arxiv_id, row.version, meta))
+            return results
+
 
 Base = declarative_base()
 
@@ -354,6 +462,7 @@ class JobRow(Base):
     status = Column(String, nullable=False, index=True)
     stage = Column(String, nullable=False, default="WAITING")
     progress_percent = Column(Float, nullable=False, default=0.0)
+    locked_at = Column(Float, nullable=True)
     created_at = Column(Float, nullable=False)
     updated_at = Column(Float, nullable=False)
 

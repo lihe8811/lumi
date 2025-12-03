@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import time
+import logging
 from google import genai
 from google.genai import types
 from models import api_config
@@ -21,8 +22,8 @@ from models import prompts
 from shared.lumi_doc import LumiConcept
 from shared.import_tags import L_REFERENCES_START, L_REFERENCES_END
 from typing import List, Type, TypeVar
-from firebase_functions import logger
-from firebase_functions import logger
+
+logger = logging.getLogger(__name__)
 
 API_KEY_LOGGING_MESSAGE = "Ran with user-specified API key"
 QUERY_RESPONSE_MAX_OUTPUT_TOKENS = 4000

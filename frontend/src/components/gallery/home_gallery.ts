@@ -23,7 +23,6 @@ import "../lumi_image/lumi_image";
 import { MobxLitElement } from "@adobe/lit-mobx";
 import { CSSResultGroup, html, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { Unsubscribe, doc, onSnapshot } from "firebase/firestore";
 import { classMap } from "lit/directives/class-map.js";
 
 import { core } from "../../core/core";
@@ -34,27 +33,22 @@ import {
   RouterService,
   getLumiPaperUrl,
 } from "../../services/router.service";
-import { FirebaseService } from "../../services/firebase.service";
 import { SnackbarService } from "../../services/snackbar.service";
+import { BackendApiService } from "../../services/backend_api.service";
 
 import {
   LumiDoc,
   LoadingStatus,
   ArxivMetadata,
   LOADING_STATUS_ERROR_STATES,
-  FeaturedImage,
 } from "../../shared/lumi_doc";
 import { ArxivCollection } from "../../shared/lumi_collection";
-import {
-  requestArxivDocImportCallable,
-  RequestArxivDocImportResult,
-} from "../../shared/callables";
 import { extractArxivId } from "../../shared/string_utils";
 
 import { styles } from "./home_gallery.scss";
 import { makeObservable, observable, ObservableMap, toJS } from "mobx";
 import { PaperData } from "../../shared/types_local_storage";
-import { MAX_IMPORT_URL_LENGTH } from "../../shared/constants";
+import { MAX_IMPORT_URL_LENGTH, DEFAULT_COVER_IMAGE_PATH } from "../../shared/constants";
 import { GalleryView } from "../../shared/types";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { DialogService, TOSDialogProps } from "../../services/dialog.service";
@@ -79,7 +73,7 @@ export class HomeGallery extends MobxLitElement {
   private readonly dialogService = core.getService(DialogService);
   private readonly homeService = core.getService(HomeService);
   private readonly routerService = core.getService(RouterService);
-  private readonly firebaseService = core.getService(FirebaseService);
+  private readonly backendApiService = core.getService(BackendApiService);
   private readonly historyService = core.getService(HistoryService);
   private readonly snackbarService = core.getService(SnackbarService);
   private readonly settingsService = core.getService(SettingsService);
@@ -92,11 +86,8 @@ export class HomeGallery extends MobxLitElement {
   // (if true, this blocks importing another paper)
   @state() private isLoadingMetadata = false;
 
-  @observable.shallow private unsubscribeListeners = new ObservableMap<
-    string,
-    Unsubscribe
-  >();
   private loadingStatusMap = new ObservableMap<string, LoadingStatus>();
+  @observable.shallow private pendingJobs = new ObservableMap<string, string>();
 
   constructor() {
     super();
@@ -104,23 +95,12 @@ export class HomeGallery extends MobxLitElement {
   }
 
   get isLoadingDocument(): boolean {
-    return this.unsubscribeListeners.size > 0 || this.isLoadingMetadata;
-  }
-
-  override connectedCallback() {
-    super.connectedCallback();
-    this.historyService.paperMetadata.forEach((metadata, paperId) => {
-      const paperData = this.historyService.getPaperData(paperId);
-      if (paperData && paperData.status === "loading") {
-        this.listenForDocReady(paperId, metadata);
-      }
-    });
+    return this.pendingJobs.size > 0 || this.isLoadingMetadata;
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.unsubscribeListeners.forEach((unsubscribe) => unsubscribe());
-    this.unsubscribeListeners.clear();
+    this.pendingJobs.clear();
   }
 
   protected override firstUpdated(_changedProperties: PropertyValues): void {
@@ -131,14 +111,28 @@ export class HomeGallery extends MobxLitElement {
         })
       );
     }
+    this.loadExistingPapers();
   }
 
-  private async requestDocument(id: string) {
-    const response = await requestArxivDocImportCallable(
-      this.firebaseService.functions,
-      id
-    );
-    return response;
+  private async loadExistingPapers() {
+    try {
+      const resp = await this.backendApiService.listPapers();
+      resp.papers.forEach((paper) => {
+        const metadata = paper.metadata as ArxivMetadata | undefined;
+        if (metadata && !metadata.paperId) {
+          metadata.paperId = paper.arxiv_id;
+        }
+        if (metadata && !metadata.version) {
+          metadata.version = paper.version;
+        }
+        if (metadata) {
+          this.historyService.addPaper(paper.arxiv_id, metadata);
+          this.loadingStatusMap.set(paper.arxiv_id, LoadingStatus.SUCCESS);
+        }
+      });
+    } catch (e) {
+      console.error("Failed to load existing papers:", e);
+    }
   }
 
   private async loadDocument() {
@@ -151,7 +145,14 @@ export class HomeGallery extends MobxLitElement {
     }
 
     this.isLoadingMetadata = true;
-    let response: RequestArxivDocImportResult;
+    let metadata: ArxivMetadata | null = null;
+    try {
+      const metaResp = await this.backendApiService.getMetadata(paperId);
+      metadata = metaResp.metadata as ArxivMetadata;
+      metadata.paperId = paperId;
+    } catch (e) {
+      // Metadata may not exist yet; proceed to request import.
+    }
 
     const existingPapers = this.historyService.getPaperHistory();
     const foundPaper = existingPapers.find(
@@ -161,80 +162,67 @@ export class HomeGallery extends MobxLitElement {
       this.snackbarService.show("Paper already loaded.");
     }
 
+    let jobId: string;
     try {
-      response = await this.requestDocument(paperId);
+      const resp = await this.backendApiService.requestImport(paperId);
+      jobId = resp.job_id;
     } catch (error) {
       this.snackbarService.show(`Error: ${(error as Error).message}`);
+      this.isLoadingMetadata = false;
       return;
     } finally {
       this.isLoadingMetadata = false;
     }
 
-    if (response.error) {
-      this.snackbarService.show(`Error: ${response.error}`);
-      return;
-    }
-
     // Reset paper input
     this.paperInput = "";
 
-    const metadata = response.metadata;
-    if (!metadata || !metadata.version) {
-      this.snackbarService.show("Error: Document not found.");
-      return;
+    if (metadata) {
+      this.historyService.addLoadingPaper(paperId, metadata);
     }
-
-    // This will add the paper to local storage with 'loading' status
-    // and update the reactive `paperMetadata` map in historyService.
-    this.historyService.addLoadingPaper(paperId, metadata);
-    this.listenForDocReady(paperId, metadata);
+    this.pendingJobs.set(paperId, jobId);
+    this.loadingStatusMap.set(paperId, LoadingStatus.WAITING);
+    this.pollJob(paperId, jobId);
   }
 
-  private listenForDocReady(paperId: string, metadata: ArxivMetadata) {
-    // If there's an existing listener for this paper, unsubscribe first.
-    if (this.unsubscribeListeners.has(paperId)) {
-      this.unsubscribeListeners.get(paperId)?.();
-    }
-
-    const docPath = `arxiv_docs/${paperId}/versions/${metadata.version}`;
-    const unsubscribe = onSnapshot(
-      doc(this.firebaseService.firestore, docPath),
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data() as LumiDoc;
-
-          if (data.metadata) {
-            this.loadingStatusMap.set(
-              data.metadata.paperId,
-              data.loadingStatus as LoadingStatus
-            );
-          }
-
-          // Once the document has loaded successfully, update its status
-          // to 'complete' and unsubscribe.
-          if (data.loadingStatus === LoadingStatus.SUCCESS) {
-            this.historyService.addPaper(paperId, metadata);
-            // Also update paper image (now that it's available in metadata)
-            this.homeService.loadMetadata([paperId], true);
-
-            this.unsubscribeListeners.get(paperId)?.();
-            this.unsubscribeListeners.delete(paperId);
-            this.snackbarService.show("Document loaded.");
-          } else if (
-            LOADING_STATUS_ERROR_STATES.includes(
-              data.loadingStatus as LoadingStatus
-            ) ||
-            data.loadingStatus === LoadingStatus.TIMEOUT
-          ) {
-            this.historyService.deletePaper(paperId);
-            this.unsubscribeListeners.get(paperId)?.();
-            this.unsubscribeListeners.delete(paperId);
-            this.snackbarService.show(`${data.loadingError}`);
-          }
+  private async pollJob(paperId: string, jobId: string) {
+    const maxAttempts = 120;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const status = await this.backendApiService.jobStatus(jobId);
+        this.loadingStatusMap.set(paperId, status.status as LoadingStatus);
+        if (status.status === LoadingStatus.SUCCESS) {
+          const version = status.version ?? "1";
+          const docResp = await this.backendApiService.getLumiDoc(
+            paperId,
+            version
+          );
+          const lumiDoc = docResp.doc as LumiDoc;
+          lumiDoc.summaries = docResp.summaries;
+          this.historyService.addPaper(paperId, lumiDoc.metadata as ArxivMetadata);
+      // Metadata already available via backend; no extra load.
+          this.pendingJobs.delete(paperId);
+          this.snackbarService.show("Document loaded.");
+          return;
         }
+        if (
+          LOADING_STATUS_ERROR_STATES.includes(
+            status.status as LoadingStatus
+          ) ||
+          status.status === LoadingStatus.TIMEOUT
+        ) {
+          this.historyService.deletePaper(paperId);
+          this.pendingJobs.delete(paperId);
+          this.snackbarService.show(`Error loading document: ${status.status}`);
+          return;
+        }
+      } catch (e) {
+        console.error("Error polling job status:", e);
       }
-    );
-    this.unsubscribeListeners.set(paperId, unsubscribe);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    this.pendingJobs.delete(paperId);
+    this.snackbarService.show("Timed out waiting for document import.");
   }
 
   override render() {
@@ -244,23 +232,14 @@ export class HomeGallery extends MobxLitElement {
   private renderContent() {
     const historyItems = this.historyService
       .getPaperHistory()
-      .map((item) => item.metadata);
+      .map((item) => item.metadata)
+      .filter((m): m is ArxivMetadata => !!m);
 
-    switch (this.galleryView) {
-      case GalleryView.CURRENT:
-        const currentPapers = this.homeService.currentMetadata ?? [];
-        return html`
-          ${this.renderCollectionMenu()} ${this.renderCollection(currentPapers)}
-        `;
-      case GalleryView.LOCAL:
-        return html`
-          ${this.renderCollectionMenu()}
-          ${this.renderLoadingMessages(historyItems)}
-          ${this.renderCollection(historyItems)}
-        `;
-      default:
-        return nothing;
-    }
+    return html`
+      ${this.renderCollectionMenu()}
+      ${this.renderLoadingMessages(historyItems)}
+      ${this.renderCollection(historyItems)}
+    `;
   }
 
   // TODO: Move document loading logic to MobXService and move this dialog
@@ -327,7 +306,7 @@ export class HomeGallery extends MobxLitElement {
 
   private renderLoadingMessages(metadata: ArxivMetadata[]) {
     const loadingItems = metadata.filter((item) =>
-      this.unsubscribeListeners.get(item.paperId)
+      this.pendingJobs.has(item.paperId)
     );
 
     const renderNewLoading = () => {
@@ -356,18 +335,6 @@ export class HomeGallery extends MobxLitElement {
   }
 
   private renderCollectionMenu() {
-    const collections = this.homeService.collections;
-    return html`
-      <div class="nav-menu">
-        ${this.renderLocalCollectionNavItem()}
-        ${collections.map((collection) =>
-          this.renderCollectionNavItem(collection)
-        )}
-      </div>
-    `;
-  }
-
-  private renderLocalCollectionNavItem() {
     const classes = classMap({
       "nav-item": true,
       active: this.routerService.activePage === Pages.HOME,
@@ -385,29 +352,15 @@ export class HomeGallery extends MobxLitElement {
     `;
   }
 
-  private renderCollectionNavItem(collection: ArxivCollection) {
-    const isCurrent =
-      collection.collectionId === this.homeService.currentCollectionId;
-    const classes = classMap({
-      "nav-item": true,
-      active: isCurrent && this.routerService.activePage === Pages.COLLECTION,
-    });
-
-    const navigate = () => {
-      this.routerService.navigate(Pages.COLLECTION, {
-        collection_id: collection.collectionId,
-      });
-    };
-
-    return html`
-      <div class=${classes} role="button" @click=${navigate}>
-        <span>${collection.title}</span>
-      </div>
-    `;
-  }
-
   private getImageUrl() {
-    return (path: string) => this.firebaseService.getDownloadUrl(path);
+    return async (path: string) => {
+      if (path.startsWith("assets/")) {
+        const prefix = (process.env.URL_PREFIX ?? "/").replace(/\/+$/, "");
+        const assetPath = path.startsWith("/") ? path : `/${path}`;
+        return `${prefix}${assetPath}`;
+      }
+      return this.backendApiService.signUrl(path, "get");
+    };
   }
 
   private renderCollection(items: ArxivMetadata[]) {
@@ -416,9 +369,10 @@ export class HomeGallery extends MobxLitElement {
         return nothing;
       }
 
-      const image = this.homeService.paperToFeaturedImageMap.get(
-        metadata.paperId
-      );
+      const imagePath =
+        (metadata as any)?.featuredImage?.image_storage_path ||
+        (metadata as any)?.featured_image?.image_storage_path ||
+        DEFAULT_COVER_IMAGE_PATH;
       const status = this.loadingStatusMap.get(metadata.paperId);
       return html`
         <a
@@ -429,7 +383,7 @@ export class HomeGallery extends MobxLitElement {
           <paper-card
             .status=${status ? getStatusDisplayText(status) : ""}
             .metadata=${metadata}
-            .image=${ifDefined(image)}
+            .image=${ifDefined({ image_storage_path: imagePath })}
             .getImageUrl=${this.getImageUrl()}
           >
           </paper-card>
@@ -455,7 +409,7 @@ export class PaperCard extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
 
   @property({ type: Object }) metadata: ArxivMetadata | null = null;
-  @property({ type: Object }) image: FeaturedImage | null = null;
+  @property({ type: Object }) image: { image_storage_path: string } | null = null;
   @property({ type: Boolean }) disabled = false;
   @property({ type: Number }) summaryMaxCharacters = 250;
   @property({ type: String }) status = "";
@@ -465,13 +419,13 @@ export class PaperCard extends MobxLitElement {
     if (
       this.image == null ||
       this.getImageUrl == null ||
-      !this.image.imageStoragePath
+      !this.image.image_storage_path
     ) {
       return html`<div class="preview-image preview-image-gradient"></div>`;
     }
     return html`<lumi-image
       class="preview-image"
-      .storagePath=${this.image.imageStoragePath}
+      .storagePath=${this.image.image_storage_path}
       .getImageUrl=${this.getImageUrl}
     ></lumi-image>`;
   }

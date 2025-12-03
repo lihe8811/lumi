@@ -79,3 +79,20 @@ class FeedbackResponse(BaseModel):
 
 class SignUrlResponse(BaseModel):
     url: str
+
+
+class LumiDocResponse(BaseModel):
+    arxiv_id: str
+    version: str
+    doc: dict
+    summaries: dict
+
+
+class PaperSummary(BaseModel):
+    arxiv_id: str
+    version: str
+    metadata: dict | None = None
+
+
+class ListPapersResponse(BaseModel):
+    papers: list[PaperSummary]

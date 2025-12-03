@@ -20,7 +20,7 @@ import { AnalyticsService } from "./services/analytics.service";
 import { BannerService } from "./services/banner.service";
 import { DialogService } from "./services/dialog.service";
 import { DocumentStateService } from "./services/document_state.service";
-import { FirebaseService } from "./services/firebase.service";
+import { BackendApiService } from "./services/backend_api.service";
 import { FloatingPanelService } from "./services/floating_panel_service";
 import { HistoryService } from "./services/history.service";
 import { HomeService } from "./services/home.service";
@@ -47,8 +47,8 @@ export function makeServiceProvider(self: Core) {
     get documentStateService() {
       return self.getService(DocumentStateService);
     },
-    get firebaseService() {
-      return self.getService(FirebaseService);
+    get backendApiService() {
+      return self.getService(BackendApiService);
     },
     get floatingPanelService() {
       return self.getService(FloatingPanelService);

@@ -31,8 +31,11 @@ import {
  * @returns A unique array of referenced span IDs.
  */
 export function getReferencedSpanIdsFromContent(
-  contents: LumiContent[]
+  contents?: LumiContent[]
 ): string[] {
+  if (!contents) {
+    return [];
+  }
   const referencedIds = new Set<string>();
 
   function findRefsInSpans(spans: LumiSpan[]) {

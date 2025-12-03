@@ -27,10 +27,9 @@ import {
   DialogService,
   UserFeedbackDialogProps,
 } from "../../../services/dialog.service";
-import { FirebaseService } from "../../../services/firebase.service";
 import { RouterService } from "../../../services/router.service";
 import { SnackbarService } from "../../../services/snackbar.service";
-import { saveUserFeedbackCallable } from "../../../shared/callables";
+import { BackendApiService } from "../../../services/backend_api.service";
 import { styles } from "./user_feedback_dialog.scss";
 import { TextArea } from "../../../pair-components/textarea";
 import { isViewportSmall } from "../../../shared/responsive_utils";
@@ -43,7 +42,7 @@ export class UserFeedbackDialog extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
 
   private readonly dialogService = core.getService(DialogService);
-  private readonly firebaseService = core.getService(FirebaseService);
+  private readonly backendApiService = core.getService(BackendApiService);
   private readonly routerService = core.getService(RouterService);
   private readonly snackbarService = core.getService(SnackbarService);
 
@@ -63,7 +62,7 @@ export class UserFeedbackDialog extends MobxLitElement {
 
     try {
       this.isLoading = true;
-      await saveUserFeedbackCallable(this.firebaseService.functions, {
+      await this.backendApiService.saveUserFeedback({
         userFeedbackText: this.feedbackText,
         arxivId,
       });

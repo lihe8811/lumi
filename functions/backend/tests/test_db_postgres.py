@@ -35,9 +35,9 @@ class PostgresDbClientTests(unittest.TestCase):
 
     def test_fetch_next_waiting_job_and_update(self):
         job = self.db.create_import_job("abc", "1")
-        fetched = self.db.fetch_next_waiting_job()
-        self.assertIsNotNone(fetched)
-        # Depending on DB state, first waiting job may differ; ensure it exists.
+        claimed = self.db.claim_next_waiting_job()
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.status, LoadingStatus.SUMMARIZING)
 
         self.db.update_job_progress(
             job.job_id,

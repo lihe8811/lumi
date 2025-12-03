@@ -9,8 +9,10 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.dependencies import get_db_client, get_storage_client
+from backend.dependencies import get_db_client, get_queue_client, get_storage_client
 from backend.db import DbClient, FeedbackRecord
+from backend.queue import JobQueue
+from backend.schemas import LumiDocResponse
 from backend.schemas import (
     AnswerRequest,
     AnswerResponse,
@@ -24,6 +26,8 @@ from backend.schemas import (
     RequestImportPayload,
     RequestImportResponse,
     SignUrlResponse,
+    ListPapersResponse,
+    PaperSummary,
 )
 from backend.storage import StorageClient
 from shared.types import LoadingStatus
@@ -35,7 +39,9 @@ router = APIRouter()
     "/request_arxiv_doc_import", response_model=RequestImportResponse, status_code=202
 )
 def request_arxiv_doc_import(
-    payload: RequestImportPayload, db: DbClient = Depends(get_db_client)
+    payload: RequestImportPayload,
+    db: DbClient = Depends(get_db_client),
+    queue: JobQueue = Depends(get_queue_client),
 ):
     """
     Enqueue an import job. The worker will handle the heavy lifting.
@@ -43,6 +49,7 @@ def request_arxiv_doc_import(
     job = db.create_import_job(payload.arxiv_id, payload.version)
     if payload.test_config:
         db.save_metadata(payload.arxiv_id, {"test_config": payload.test_config})
+    queue.enqueue(job.job_id)
     return RequestImportResponse(
         job_id=job.job_id,
         arxiv_id=job.arxiv_id,
@@ -134,3 +141,34 @@ def sign_url(
     else:
         url = storage.presign_put(path, expires_in=expires_in)
     return SignUrlResponse(url=url)
+
+
+@router.get("/list-papers", response_model=ListPapersResponse)
+def list_papers(db: DbClient = Depends(get_db_client)):
+    docs = db.list_docs(limit=100)
+    papers = []
+    for arxiv_id, version, metadata in docs:
+        meta = metadata or {}
+        # Ensure required fields exist for the frontend.
+        meta.setdefault("paperId", arxiv_id)
+        meta.setdefault("version", version)
+        papers.append(PaperSummary(arxiv_id=arxiv_id, version=version, metadata=meta))
+    return ListPapersResponse(papers=papers)
+
+
+@router.get("/lumi-doc/{arxiv_id}/{version}", response_model=LumiDocResponse)
+def get_lumi_doc(
+    arxiv_id: str,
+    version: str,
+    db: DbClient = Depends(get_db_client),
+):
+    doc_tuple = db.get_lumi_doc(arxiv_id, version)
+    if not doc_tuple:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc_json, summaries_json = doc_tuple
+    return LumiDocResponse(
+        arxiv_id=arxiv_id,
+        version=version,
+        doc=doc_json,
+        summaries=summaries_json,
+    )

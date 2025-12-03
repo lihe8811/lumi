@@ -15,8 +15,6 @@
  * limitations under the License.
  */
 
-import { DocumentData, QuerySnapshot } from "firebase/firestore";
-
 /**
  * Generic wrapper type for constructors, used in the DI system.
  */
@@ -25,9 +23,6 @@ export type Constructor<T> = {
   // tslint:disable-next-line:no-any
   new (...args: any[]): T;
 };
-
-/* Snapshot for Firebase calls. */
-export type Snapshot = QuerySnapshot<DocumentData, DocumentData>;
 
 /** Color palette. */
 export enum ColorMode {

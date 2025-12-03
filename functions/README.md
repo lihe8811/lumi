@@ -31,6 +31,15 @@ pip install -r requirements.txt
 uvicorn backend.app:app --reload --port 8000
 ```
 
+### Worker with Redis queue
+- Start Redis locally (`brew services start redis`) or provide `REDIS_URL=redis://...`.
+- Run the worker loop:
+```bash
+cd functions
+source venv/bin/activate
+python -m backend.worker
+```
+
 ## Quick checks
 - `POST /api/request_arxiv_doc_import` with `{"arxiv_id":"1234.56789","version":"1"}` → job id.
 - `GET /api/job-status/{job_id}` → status (`WAITING` in the in-memory stub).

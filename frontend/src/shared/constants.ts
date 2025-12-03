@@ -48,6 +48,7 @@ export const LOGO_ICON_NAME = "book_ribbon";
 export const TUTORIAL_QUESTION_IMAGE_PATH = "assets/questions_tutorial.png";
 export const TUTORIAL_IMAGE_QUESTION_IMAGE_PATH =
   "assets/questions_image_tutorial.png";
+export const DEFAULT_COVER_IMAGE_PATH = "assets/default_paper_cover.png";
 
 export const INPUT_DEBOUNCE_MS = 100;
 

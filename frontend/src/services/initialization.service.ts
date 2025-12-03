@@ -18,14 +18,12 @@
 import { observable } from "mobx";
 
 import { AnalyticsService } from "./analytics.service";
-import { FirebaseService } from "./firebase.service";
 import { RouterService } from "./router.service";
 import { Service } from "./service";
 import { HistoryService } from "./history.service";
 
 interface ServiceProvider {
   analyticsService: AnalyticsService;
-  firebaseService: FirebaseService;
   historyService: HistoryService;
   routerService: RouterService;
 }
@@ -39,7 +37,6 @@ export class InitializationService extends Service {
 
   override async initialize() {
     this.sp.analyticsService.initialize();
-    this.sp.firebaseService.initialize();
     this.sp.routerService.initialize();
     this.sp.historyService.initialize();
 

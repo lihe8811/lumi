@@ -28,10 +28,8 @@ import logging
 from PIL import Image
 import pypdfium2 as pdfium
 
-try:
-    from firebase_admin import storage as gcs_storage  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    gcs_storage = None
+# Legacy GCS support removed; prefer COS/InMemory.
+gcs_storage = None
 
 import boto3
 

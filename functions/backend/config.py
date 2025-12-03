@@ -42,6 +42,10 @@ class Settings(BaseSettings):
         default=False, env="LUMI_USE_IN_MEMORY_BACKENDS"
     )
 
+    # Queue (Redis)
+    redis_url: Optional[str] = Field(default=None, env="REDIS_URL")
+    redis_queue_key: str = Field(default="lumi:jobs", env="REDIS_QUEUE_KEY")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

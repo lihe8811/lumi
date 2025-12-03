@@ -25,7 +25,6 @@ import { customElement } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 
 import { core } from "../../core/core";
-import { FirebaseService } from "../../services/firebase.service";
 import {
   NAV_ITEMS,
   NavItem,
@@ -41,7 +40,6 @@ import { styles } from "./sidenav.scss";
 @customElement("sidenav-menu")
 export class SideNav extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
-  private readonly firebaseService = core.getService(FirebaseService);
   private readonly routerService = core.getService(RouterService);
 
   override render() {

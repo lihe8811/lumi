@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from backend.db import InMemoryDbClient
-from backend.worker import process_once
+from backend.queue import InMemoryJobQueue
+from backend.worker import process_next
 from shared.types import LoadingStatus
 
 
@@ -13,10 +14,12 @@ class WorkerTests(unittest.TestCase):
             "Settings", (), {"use_in_memory_backends": True, "gemini_api_key": None}
         )()
         db = InMemoryDbClient()
+        queue = InMemoryJobQueue()
         job = db.create_import_job("1234.56789", "1")
         self.assertEqual(job.status, LoadingStatus.WAITING)
 
-        processed = process_once(db)
+        queue.enqueue(job.job_id)
+        processed = process_next(db=db, queue=queue, block=False)
         self.assertTrue(processed)
 
         updated = db.get_job(job.job_id)
@@ -26,7 +29,8 @@ class WorkerTests(unittest.TestCase):
 
     def test_process_once_no_jobs(self):
         db = InMemoryDbClient()
-        processed = process_once(db)
+        queue = InMemoryJobQueue()
+        processed = process_next(db=db, queue=queue, block=False)
         self.assertFalse(processed)
 
 

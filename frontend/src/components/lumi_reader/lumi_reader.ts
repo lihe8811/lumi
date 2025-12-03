@@ -24,11 +24,10 @@ import "../../pair-components/icon_button";
 
 import { CSSResultGroup, html, nothing, TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { Unsubscribe, doc, onSnapshot } from "firebase/firestore";
 import { provide } from "@lit/context";
 
 import { core } from "../../core/core";
-import { FirebaseService } from "../../services/firebase.service";
+import { BackendApiService } from "../../services/backend_api.service";
 import { HistoryService } from "../../services/history.service";
 import { DocumentStateService } from "../../services/document_state.service";
 import { SnackbarService } from "../../services/snackbar.service";
@@ -40,11 +39,6 @@ import {
   LOADING_STATUS_ERROR_STATES,
   ArxivMetadata,
 } from "../../shared/lumi_doc";
-import {
-  getArxivMetadata,
-  getLumiResponseCallable,
-  getPersonalSummaryCallable,
-} from "../../shared/callables";
 import { scrollContext, ScrollState } from "../../contexts/scroll_context";
 import {
   AnswerHighlightTooltipProps,
@@ -75,7 +69,6 @@ import {
   SIDEBAR_TABS,
 } from "../../shared/constants";
 import { LightMobxLitElement } from "../light_mobx_lit_element/light_mobx_lit_element";
-import { FirebaseError } from "firebase/app";
 import { RouterService, getArxivPaperUrl } from "../../services/router.service";
 import { BannerService } from "../../services/banner.service";
 import { createRef, ref } from "lit/directives/ref.js";
@@ -115,7 +108,7 @@ export class LumiReader extends LightMobxLitElement {
   private readonly bannerService = core.getService(BannerService);
   private readonly dialogService = core.getService(DialogService);
   private readonly documentStateService = core.getService(DocumentStateService);
-  private readonly firebaseService = core.getService(FirebaseService);
+  private readonly backendApiService = core.getService(BackendApiService);
   private readonly floatingPanelService = core.getService(FloatingPanelService);
   private readonly historyService = core.getService(HistoryService);
   private readonly routerService = core.getService(RouterService);
@@ -133,8 +126,6 @@ export class LumiReader extends LightMobxLitElement {
   @state() hoveredSpanId: string | null = null;
 
   private mobileSmartHighlightContainerRef = createRef<HTMLElement>();
-
-  private unsubscribeListener?: Unsubscribe;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -174,9 +165,6 @@ export class LumiReader extends LightMobxLitElement {
     this.bannerService.clearBannerProperties();
 
     super.disconnectedCallback();
-    if (this.unsubscribeListener) {
-      this.unsubscribeListener();
-    }
   }
 
   private setLoadingStatus(status: LoadingStatus) {
@@ -201,81 +189,102 @@ export class LumiReader extends LightMobxLitElement {
   }
 
   private async loadDocument() {
-    if (this.unsubscribeListener) {
-      this.unsubscribeListener();
-    }
+    this.metadataNotFound = false;
 
     let metadata: ArxivMetadata | null = null;
     try {
-      metadata = await getArxivMetadata(
-        this.firebaseService.functions,
-        this.documentId
-      );
+      const resp = await this.backendApiService.getMetadata(this.documentId);
+      metadata = resp.metadata as ArxivMetadata;
+      metadata.paperId = this.documentId;
     } catch (error) {
-      console.error("Warning: Document metadata or version not found.", error);
-    }
-
-    if (!metadata || !metadata.version) {
-      this.metadataNotFound = true;
-      return;
+      console.error("Warning: Document metadata not found; will request import.", error);
     }
 
     // Add the paper to local storage history if it does not yet exist.
-    const paperData = this.historyService.getPaperData(this.documentId);
-    if (!paperData) {
-      this.historyService.addPaper(this.documentId, metadata);
+    if (metadata) {
+      const paperData = this.historyService.getPaperData(this.documentId);
+      if (!paperData) {
+        this.historyService.addPaper(this.documentId, metadata);
+      }
     }
 
-    const docPath = `arxiv_docs/${this.documentId}/versions/${metadata.version}`;
-    this.unsubscribeListener = onSnapshot(
-      doc(this.firebaseService.firestore, docPath),
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data() as LumiDoc;
+    const loaded = metadata ? await this.tryLoadDoc(metadata) : false;
+    if (loaded) {
+      return;
+    }
 
-          if (
-            data.loadingStatus === LoadingStatus.SUCCESS ||
-            data.loadingStatus === LoadingStatus.SUMMARIZING
-          ) {
-            this.documentStateService.setDocument(data);
-          }
+    // Kick off import and poll status.
+    await this.startImportAndPoll();
+  }
 
-          this.setLoadingStatus(data.loadingStatus as LoadingStatus);
-          this.metadata = data.metadata;
-          this.requestUpdate();
-
-          if (
-            LOADING_STATES_ALLOW_PERSONAL_SUMMARY.includes(data.loadingStatus)
-          ) {
-            // Once the document is fully loaded, check for personal summary.
-            if (!this.historyService.personalSummaries.has(this.documentId)) {
-              this.fetchPersonalSummary();
-            }
-          }
-
-          if (
-            LOADING_STATUS_ERROR_STATES.includes(
-              data.loadingStatus as LoadingStatus
-            )
-          ) {
-            this.snackbarService.show(
-              `Error loading document: ${this.documentId}`
-            );
-          }
-        } else {
-          this.snackbarService.show(`Document ${this.documentId} not found.`);
-        }
-      },
-      (error) => {
-        this.snackbarService.show(`Error loading document: ${error.message}`);
-        console.error(error);
+  private async tryLoadDoc(metadata: ArxivMetadata): Promise<boolean> {
+    try {
+      const resp = await this.backendApiService.getLumiDoc(
+        this.documentId,
+        metadata.version
+      );
+      const lumiDoc = resp.doc as LumiDoc;
+      lumiDoc.summaries = resp.summaries;
+      this.documentStateService.setDocument(lumiDoc);
+      this.setLoadingStatus(LoadingStatus.SUCCESS);
+      this.metadata = lumiDoc.metadata;
+      if (!this.historyService.personalSummaries.has(this.documentId)) {
+        this.fetchPersonalSummary();
       }
-    );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private async startImportAndPoll() {
+    try {
+      const job = await this.backendApiService.requestImport(this.documentId);
+      this.setLoadingStatus(LoadingStatus.WAITING);
+      await this.pollJob(job.job_id, this.documentId);
+    } catch (e) {
+      console.error("Error requesting import:", e);
+      this.snackbarService.show("Error: Could not start import.");
+      this.setLoadingStatus(LoadingStatus.ERROR_DOCUMENT_LOAD);
+    }
+  }
+
+  private async pollJob(jobId: string, arxivId: string) {
+    const maxAttempts = 120; // ~2 minutes at 1s interval
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const status = await this.backendApiService.jobStatus(jobId);
+        this.setLoadingStatus(status.status as LoadingStatus);
+        if (status.status === LoadingStatus.SUCCESS) {
+          const version = status.version ?? "1";
+          const metadata: ArxivMetadata = {
+            paperId: arxivId,
+            version,
+            authors: [],
+            title: "",
+            summary: "",
+            updatedTimestamp: "",
+            publishedTimestamp: "",
+          };
+          await this.tryLoadDoc(metadata);
+          return;
+        }
+        if (LOADING_STATUS_ERROR_STATES.includes(status.status as LoadingStatus)) {
+          this.snackbarService.show(`Error loading document: ${status.status}`);
+          return;
+        }
+      } catch (e) {
+        console.error("Error polling job status:", e);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    this.setLoadingStatus(LoadingStatus.TIMEOUT);
+    this.snackbarService.show("Timed out waiting for document import.");
   }
 
   private async fetchPersonalSummary() {
     const currentDoc = this.documentStateService.lumiDocManager?.lumiDoc;
-    if (!currentDoc) return;
+    if (!currentDoc || !currentDoc.metadata?.paperId || !currentDoc.metadata?.version) return;
 
     const tempAnswer = createTemporaryAnswer({
       query: PERSONAL_SUMMARY_QUERY_NAME,
@@ -291,11 +300,10 @@ export class LumiReader extends LightMobxLitElement {
             paper.metadata.paperId !== this.documentId &&
             paper.status === "complete"
         );
-      const summaryAnswer = await getPersonalSummaryCallable(
-        this.firebaseService.functions,
-        currentDoc,
-        pastPapers,
-        this.settingsService.apiKey.value
+      const summaryAnswer = await this.backendApiService.getPersonalSummary(
+        currentDoc.metadata.paperId,
+        currentDoc.metadata.version,
+        pastPapers
       );
 
       this.historyService.addPersonalSummary(this.documentId, summaryAnswer);
@@ -308,7 +316,8 @@ export class LumiReader extends LightMobxLitElement {
   }
 
   private get getImageUrl() {
-    return (path: string) => this.firebaseService.getDownloadUrl(path);
+    return async (path: string) =>
+      this.backendApiService.signUrl(path, "get");
   }
 
   private checkChangeTabs() {
@@ -344,27 +353,19 @@ export class LumiReader extends LightMobxLitElement {
     this.checkChangeTabs();
 
     try {
-      const response = await getLumiResponseCallable(
-        this.firebaseService.functions,
-        this.documentStateService.lumiDocManager.lumiDoc,
-        request,
-        this.settingsService.apiKey.value
+      const doc = this.documentStateService.lumiDocManager.lumiDoc;
+      if (!doc?.metadata?.paperId || !doc.metadata.version) {
+        throw new Error("Document metadata unavailable");
+      }
+      const response = await this.backendApiService.getLumiResponse(
+        doc.metadata.paperId,
+        doc.metadata.version,
+        request
       );
       this.historyService.addAnswer(this.documentId, response);
     } catch (e) {
-      let message = "Error: Could not get response from Lumi.";
-
-      if (
-        (e as FirebaseError).code === "functions/unavailable" &&
-        this.settingsService.apiKey.value !== ""
-      ) {
-        message = "Error: Your API key may be incorrect";
-      } else if ((e as FirebaseError).code === "functions/resource-exhausted") {
-        message =
-          "Model quota exceeded. Add your own API key in Home > Settings";
-      }
-
-      this.snackbarService.show(message, 5000);
+      console.error("Error getting Lumi response:", e);
+      this.snackbarService.show("Error: Could not get response from Lumi.", 5000);
     } finally {
       this.historyService.removeTemporaryAnswer(tempAnswer.id);
     }
@@ -378,6 +379,10 @@ export class LumiReader extends LightMobxLitElement {
   ) => {
     const currentDoc = this.documentStateService.lumiDocManager?.lumiDoc;
     if (!currentDoc) return;
+    if (!currentDoc.metadata?.paperId || !currentDoc.metadata?.version) {
+      this.snackbarService.show("Error: Document metadata missing.");
+      return;
+    }
 
     const request: LumiAnswerRequest = {
       highlight: highlightedText,
@@ -392,11 +397,10 @@ export class LumiReader extends LightMobxLitElement {
     this.historyService.addTemporaryAnswer(tempAnswer);
 
     try {
-      const response = await getLumiResponseCallable(
-        this.firebaseService.functions,
-        currentDoc,
-        request,
-        this.settingsService.apiKey.value
+      const response = await this.backendApiService.getLumiResponse(
+        currentDoc.metadata.paperId,
+        currentDoc.metadata.version,
+        request
       );
       this.historyService.addAnswer(this.documentId, response);
     } catch (e) {

@@ -17,23 +17,20 @@
 
 import * as router5 from "router5";
 import browserPlugin from "router5-plugin-browser";
-import { computed, makeObservable, observable } from "mobx";
+import { computed, makeObservable, observable, action, runInAction } from "mobx";
 
 import { Service } from "./service";
 import { AnalyticsService } from "./analytics.service";
 import { DocumentStateService } from "./document_state.service";
 import { HistoryService } from "./history.service";
-import { HomeService } from "./home.service";
 
 interface ServiceProvider {
   analyticsService: AnalyticsService;
   documentStateService: DocumentStateService;
   historyService: HistoryService;
-  homeService: HomeService;
 }
 
 export const ARXIV_DOCS_ROUTE_NAME = "arxiv";
-const DEFAULT_COLLECTION_ID = "pair_team";
 
 /**
  * Handles app routing and page navigation
@@ -95,6 +92,7 @@ export class RouterService extends Service {
     this.router.start();
   }
 
+  @action
   private handlerRouteChange(routeChange: RouteChange) {
     const prevDocId = this.activeRoute.params["document_id"];
     const nextDocId = routeChange.route.params["document_id"];
@@ -116,22 +114,7 @@ export class RouterService extends Service {
     }
 
     const currentPage = this.getPage(this.activeRoute);
-    if (
-      currentPage === Pages.HOME &&
-      !this.sp.historyService.getPaperHistory().length &&
-      !this.hasNavigated
-    ) {
-      this.navigate(Pages.COLLECTION, {
-        collection_id: DEFAULT_COLLECTION_ID,
-      });
-      return;
-    }
-
-    // If gallery page, load collections
-    if (currentPage === Pages.HOME || currentPage === Pages.COLLECTION) {
-      const currentCollectionId = this.activeRoute.params["collection_id"];
-      this.sp.homeService.loadCollections(currentCollectionId);
-    }
+    // Collections removed; nothing to load or reroute.
   }
 
   setNav(isOpen: boolean) {
