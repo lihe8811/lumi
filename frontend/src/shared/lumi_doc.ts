@@ -218,6 +218,7 @@ export interface ArxivMetadata {
   summary: string;
   updatedTimestamp: string;
   publishedTimestamp: string;
+  categories?: string[];
 }
 
 export enum LoadingStatus {

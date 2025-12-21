@@ -96,3 +96,26 @@ class PaperSummary(BaseModel):
 
 class ListPapersResponse(BaseModel):
     papers: list[PaperSummary]
+
+
+class ArxivPaperMetadata(BaseModel):
+    paperId: str
+    version: str
+    authors: list[str]
+    title: str
+    summary: str
+    updatedTimestamp: str
+    publishedTimestamp: str
+    categories: list[str] | None = None
+
+
+class ArxivSearchPaper(BaseModel):
+    metadata: ArxivPaperMetadata
+    score: Optional[float] = None
+
+
+class ArxivSearchResponse(BaseModel):
+    papers: list[ArxivSearchPaper]
+    total: int
+    page: int
+    page_size: int

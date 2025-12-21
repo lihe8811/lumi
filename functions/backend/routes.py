@@ -9,7 +9,13 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.dependencies import get_db_client, get_queue_client, get_storage_client
+from backend.dependencies import (
+    get_arxiv_sanity_store,
+    get_db_client,
+    get_queue_client,
+    get_storage_client,
+)
+from backend.arxiv_sanity import DEFAULT_PAGE_SIZE
 from backend.db import DbClient, FeedbackRecord
 from backend.queue import JobQueue
 from backend.schemas import LumiDocResponse
@@ -28,7 +34,9 @@ from backend.schemas import (
     SignUrlResponse,
     ListPapersResponse,
     PaperSummary,
+    ArxivSearchResponse,
 )
+from backend.arxiv_sanity import ArxivSanityStore
 from backend.storage import StorageClient
 from shared.types import LoadingStatus
 
@@ -154,6 +162,56 @@ def list_papers(db: DbClient = Depends(get_db_client)):
         meta.setdefault("version", version)
         papers.append(PaperSummary(arxiv_id=arxiv_id, version=version, metadata=meta))
     return ListPapersResponse(papers=papers)
+
+
+@router.get("/arxiv-sanity/recent", response_model=ArxivSearchResponse)
+def list_recent_arxiv(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=100),
+    categories: str | None = Query(None),
+    store: ArxivSanityStore = Depends(get_arxiv_sanity_store),
+):
+    offset = (page - 1) * page_size
+    category_list = (
+        [c.strip() for c in categories.split(",") if c.strip()]
+        if categories
+        else None
+    )
+    papers, total = store.list_recent(
+        limit=page_size, offset=offset, categories=category_list
+    )
+    payload = [
+        {"metadata": paper.to_metadata(), "score": None} for paper in papers
+    ]
+    return ArxivSearchResponse(
+        papers=payload, total=total, page=page, page_size=page_size
+    )
+
+
+@router.get("/arxiv-sanity/search", response_model=ArxivSearchResponse)
+def search_arxiv(
+    query: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=100),
+    categories: str | None = Query(None),
+    store: ArxivSanityStore = Depends(get_arxiv_sanity_store),
+):
+    offset = (page - 1) * page_size
+    category_list = (
+        [c.strip() for c in categories.split(",") if c.strip()]
+        if categories
+        else None
+    )
+    results, total = store.search(
+        query, limit=page_size, offset=offset, categories=category_list
+    )
+    payload = [
+        {"metadata": paper.to_metadata(), "score": score}
+        for paper, score in results
+    ]
+    return ArxivSearchResponse(
+        papers=payload, total=total, page=page, page_size=page_size
+    )
 
 
 @router.get("/lumi-doc/{arxiv_id}/{version}", response_model=LumiDocResponse)

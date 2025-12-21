@@ -68,6 +68,27 @@ export class Settings extends MobxLitElement {
           </div>
         </div>
         <div class="section">
+          <h2>Discover categories</h2>
+          <div>
+            Choose arXiv categories to surface in Discover. Use comma-separated
+            values, for example: cs.CV, cs.LG, cs.CL.
+          </div>
+          <div class="field">
+            <pr-textinput
+              .value=${this.settingsService.discoverCategories.value.join(", ")}
+              .onChange=${(e: InputEvent) => {
+                const value = (e.target as HTMLInputElement).value;
+                const categories = value
+                  .split(",")
+                  .map((item) => item.trim())
+                  .filter((item) => item.length > 0);
+                this.settingsService.discoverCategories.value = categories;
+              }}
+              placeholder="cs.CV, cs.LG, cs.CL"
+            ></pr-textinput>
+          </div>
+        </div>
+        <div class="section">
           <h2>About Lumi</h2>
           <tos-content></tos-content>
         </div>

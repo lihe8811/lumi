@@ -236,7 +236,6 @@ export class HomeGallery extends MobxLitElement {
       .filter((m): m is ArxivMetadata => !!m);
 
     return html`
-      ${this.renderCollectionMenu()}
       ${this.renderLoadingMessages(historyItems)}
       ${this.renderCollection(historyItems)}
     `;
@@ -334,24 +333,6 @@ export class HomeGallery extends MobxLitElement {
     return nothing;
   }
 
-  private renderCollectionMenu() {
-    const classes = classMap({
-      "nav-item": true,
-      active: this.routerService.activePage === Pages.HOME,
-    });
-
-    const navigate = () => {
-      this.routerService.navigate(Pages.HOME);
-    };
-
-    return html`
-      <div class=${classes} role="button" @click=${navigate}>
-        <pr-icon icon="bookmarks" size="small"></pr-icon>
-        <span>My collection</span>
-      </div>
-    `;
-  }
-
   private getImageUrl() {
     return async (path: string) => {
       if (path.startsWith("assets/")) {
@@ -447,6 +428,9 @@ export class PaperCard extends MobxLitElement {
     const authors = this.metadata.authors.join(", ");
     return html`
       <div class=${classMap(classes)}>
+        <div class="preview-corner">
+          <slot name="corner"></slot>
+        </div>
         ${this.renderImage()}
         <div class="preview-content">
           <div class="preview-title">${this.metadata.title}</div>
@@ -456,6 +440,9 @@ export class PaperCard extends MobxLitElement {
           </div>
           ${this.renderStatusChip()}
           <div class="preview-description">${summary}</div>
+        </div>
+        <div class="preview-actions">
+          <slot name="actions"></slot>
         </div>
       </div>
     `;

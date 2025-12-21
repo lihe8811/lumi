@@ -5,6 +5,7 @@ Dependency wiring for the FastAPI app.
 from __future__ import annotations
 
 from backend.config import get_settings
+from backend.arxiv_sanity import ArxivSanityStore
 from backend.db import DbClient, InMemoryDbClient, PostgresDbClient
 from backend.queue import InMemoryJobQueue, JobQueue, RedisJobQueue
 from backend.storage import CosStorageClient, InMemoryStorageClient, StorageClient
@@ -12,6 +13,7 @@ from backend.storage import CosStorageClient, InMemoryStorageClient, StorageClie
 _db_client: DbClient | None = None
 _storage_client: StorageClient | None = None
 _queue_client: JobQueue | None = None
+_arxiv_sanity_store: ArxivSanityStore | None = None
 
 
 def get_db_client() -> DbClient:
@@ -70,3 +72,12 @@ def get_queue_client() -> JobQueue:
     else:
         _queue_client = InMemoryJobQueue()
     return _queue_client
+
+
+def get_arxiv_sanity_store() -> ArxivSanityStore:
+    global _arxiv_sanity_store
+    if _arxiv_sanity_store:
+        return _arxiv_sanity_store
+    settings = get_settings()
+    _arxiv_sanity_store = ArxivSanityStore(settings.arxiv_sanity_data_dir)
+    return _arxiv_sanity_store

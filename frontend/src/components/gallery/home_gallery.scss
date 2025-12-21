@@ -78,11 +78,18 @@ h1 {
 .preview-gallery {
   display: grid;
   gap: common.$spacing-large;
-  grid-template-columns: repeat(2, 1fr);
-  max-width: common.$info-content-max-width;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 80%;
+  width: 80%;
 
   @include common.viewport-medium {
-    grid-template-columns: repeat(1, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+    width: 100%;
+  }
+
+  @include common.viewport-small {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
 
@@ -91,9 +98,11 @@ h1 {
   border: 2px solid var(--md-sys-color-gray-container);
   border-radius: common.$spacing-small;
   gap: common.$spacing-large;
-  height: 100%;
-  max-width: calc(common.$info-content-max-width / 2);
+  height: 424px;
+  max-width: 100%;
+  min-width: 0;
   padding: common.$spacing-large;
+  position: relative;
   transition: all 0.25s ease-out;
   width: 100%;
 
@@ -128,9 +137,41 @@ h1 {
 .preview-image {
   aspect-ratio: 1 / 1;
   flex-shrink: 0;
-  height: 200px;
+  height: 160px;
   object-fit: cover;
   overflow: hidden;
+  width: 100%;
+}
+
+.preview-corner {
+  @include common.flex-column;
+  align-items: flex-end;
+  gap: common.$spacing-small;
+  position: absolute;
+  top: common.$spacing-medium;
+  right: common.$spacing-medium;
+}
+
+.preview-corner ::slotted(.paper-date-badge) {
+  background: var(--md-sys-color-primary);
+  border: 1px solid var(--md-sys-color-primary);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.preview-corner ::slotted(.paper-category-badge) {
+  background: var(--md-sys-color-secondary-container);
+  border: 1px solid var(--md-sys-color-secondary-container);
+  border-radius: 999px;
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  white-space: nowrap;
 }
 
 .preview-image-gradient {
@@ -144,6 +185,22 @@ h1 {
 .preview-content {
   @include common.flex-column;
   gap: common.$spacing-small;
+  flex: 1;
+}
+
+.preview-actions {
+  @include common.flex-row;
+  gap: common.$spacing-small;
+  justify-content: flex-start;
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.preview-description {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: var(--paper-card-line-clamp, 8);
+  -webkit-box-orient: vertical;
 }
 
 .preview-title {

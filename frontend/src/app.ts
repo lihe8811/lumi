@@ -17,6 +17,8 @@
 
 import "./pair-components/button";
 import "./components/gallery/home_gallery";
+import "./components/gallery/home_gallery_tabs";
+import "./components/arxiv_discover/arxiv_discover";
 import "./components/header/header";
 import "./components/settings/settings";
 import "./components/lumi_reader/lumi_reader";
@@ -75,6 +77,14 @@ export class App extends LightMobxLitElement {
           <page-header></page-header>
           <div class="content info">
             <settings-page></settings-page>
+          </div>
+        `;
+      case Pages.DISCOVER:
+        return html`
+          <page-header></page-header>
+          <home-gallery-tabs></home-gallery-tabs>
+          <div class="content">
+            <arxiv-discover></arxiv-discover>
           </div>
         `;
       case Pages.COLLECTION:

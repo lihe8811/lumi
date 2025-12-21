@@ -1,0 +1,123 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@use "../../sass/colors";
+@use "../../sass/common";
+@use "../../sass/typescale";
+
+:host {
+  @include common.flex-column-align-center;
+  gap: common.$spacing-xl;
+  width: 100%;
+}
+
+.search-panel {
+  @include common.flex-column;
+  gap: common.$spacing-large;
+  width: 80%;
+  max-width: 80%;
+  padding: 0;
+
+  @include common.viewport-medium {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.search-bar {
+  @include common.flex-row;
+  gap: common.$spacing-medium;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0 auto;
+  width: 60%;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.search-actions {
+  @include common.flex-row;
+  gap: common.$spacing-small;
+}
+
+.error-message {
+  @include typescale.body-small;
+  color: var(--md-sys-color-error);
+}
+
+.empty-message {
+  color: var(--md-sys-color-outline);
+  font-style: italic;
+}
+
+.loading-message {
+  @include typescale.body-small;
+  color: var(--md-sys-color-outline);
+}
+
+.preview-gallery {
+  display: grid;
+  gap: common.$spacing-large;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 80%;
+  width: 80%;
+
+  @include common.viewport-medium {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+    width: 100%;
+  }
+
+  @include common.viewport-small {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+}
+
+.result-card {
+  @include common.flex-column;
+  gap: common.$spacing-small;
+  min-width: 0;
+  width: 100%;
+}
+
+.result-card paper-card {
+  width: 100%;
+}
+
+.cta-pill {
+  --pr-button-border-radius: 999px;
+  --pr-button-padding: 6px 14px;
+  --pr-button-font-weight: 600;
+  --pr-button-color: #7a3fc4;
+  --pr-button-background: #ffffff;
+  --pr-button-border: 1px solid rgba(122, 63, 196, 0.2);
+  box-shadow: 0 4px 10px rgba(122, 63, 196, 0.12);
+}
+
+.cta-pill[disabled] {
+  opacity: 1;
+}
+
+.footer {
+  @include common.flex-row;
+  justify-content: center;
+  width: 100%;
+}

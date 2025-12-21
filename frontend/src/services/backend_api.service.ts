@@ -46,6 +46,18 @@ export interface ListPapersResponse {
   papers: { arxiv_id: string; version: string; metadata?: any }[];
 }
 
+export interface ArxivSearchPaper {
+  metadata: any;
+  score?: number | null;
+}
+
+export interface ArxivSearchResponse {
+  papers: ArxivSearchPaper[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 type HttpMethod = "GET" | "POST";
 
 export class BackendApiService extends Service {
@@ -125,6 +137,38 @@ export class BackendApiService extends Service {
 
   async listPapers(): Promise<ListPapersResponse> {
     return this.request("/api/list-papers", "GET");
+  }
+
+  async listArxivRecent(
+    page: number,
+    pageSize: number,
+    categories?: string[]
+  ): Promise<ArxivSearchResponse> {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (categories && categories.length > 0) {
+      params.set("categories", categories.join(","));
+    }
+    return this.request(`/api/arxiv-sanity/recent?${params.toString()}`, "GET");
+  }
+
+  async searchArxivPapers(
+    query: string,
+    page: number,
+    pageSize: number,
+    categories?: string[]
+  ): Promise<ArxivSearchResponse> {
+    const params = new URLSearchParams({
+      query,
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (categories && categories.length > 0) {
+      params.set("categories", categories.join(","));
+    }
+    return this.request(`/api/arxiv-sanity/search?${params.toString()}`, "GET");
   }
 
   async saveUserFeedback(feedback: UserFeedback): Promise<void> {

@@ -62,16 +62,7 @@ export class Header extends MobxLitElement {
   private renderTitle() {
     const activePage = this.routerService.activePage;
 
-    switch (activePage) {
-      case Pages.HOME:
-        return APP_NAME;
-      case Pages.COLLECTION:
-        return APP_NAME;
-      case Pages.SETTINGS:
-        return "Settings";
-      default:
-        return "";
-    }
+    return APP_NAME;
   }
 
   private renderActions() {
@@ -119,6 +110,7 @@ export class Header extends MobxLitElement {
       </pr-tooltip>
     `;
   }
+
 
   private renderFeedbackButton() {
     const handleClick = () => {

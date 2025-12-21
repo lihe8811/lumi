@@ -32,6 +32,16 @@ interface ServiceProvider {
 const TOS_CONFIRMED_LOCAL_STORAGE_KEY = "tosConfirmed";
 const TUTORIAL_CONFIRMED_LOCAL_STORAGE_KEY = "tutorialConfirmed";
 const API_KEY_LOCAL_STORAGE_KEY = "userApiKey";
+const DISCOVER_CATEGORIES_LOCAL_STORAGE_KEY = "discoverCategories";
+const DEFAULT_DISCOVER_CATEGORIES = [
+  "cs.CV",
+  "cs.LG",
+  "cs.CL",
+  "cs.AI",
+  "cs.NE",
+  "cs.RO",
+  "cs.MA",
+];
 
 /**
  * Settings service.
@@ -54,6 +64,10 @@ export class SettingsService extends Service {
       API_KEY_LOCAL_STORAGE_KEY,
       ""
     );
+    this.discoverCategories = this.sp.localStorageService.makeLocalStorageHelper(
+      DISCOVER_CATEGORIES_LOCAL_STORAGE_KEY,
+      DEFAULT_DISCOVER_CATEGORIES
+    );
   }
 
   @observable colorMode: ColorMode = ColorMode.DEFAULT;
@@ -61,6 +75,7 @@ export class SettingsService extends Service {
   readonly isTosConfirmed: LocalStorageHelper<boolean>;
   readonly isTutorialConfirmed: LocalStorageHelper<boolean>;
   readonly apiKey: LocalStorageHelper<string>;
+  readonly discoverCategories: LocalStorageHelper<string[]>;
 
   @action setColorMode(colorMode: ColorMode) {
     this.colorMode = colorMode;

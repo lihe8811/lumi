@@ -54,6 +54,10 @@ export class RouterService extends Service {
       path: "/",
     },
     {
+      name: Pages.DISCOVER,
+      path: "/discover",
+    },
+    {
       name: Pages.SETTINGS,
       path: "/settings",
     },
@@ -162,6 +166,7 @@ export type RouteChange = router5.SubscribeState;
 export enum Pages {
   ARXIV_DOCUMENT = "ARXIV",
   COLLECTION = "COLLECTION",
+  DISCOVER = "DISCOVER",
   HOME = "HOME",
   SETTINGS = "SETTINGS",
 }
@@ -184,6 +189,12 @@ export const NAV_ITEMS: NavItem[] = [
     page: Pages.HOME,
     title: "Home",
     icon: "home",
+    isPrimaryPage: true,
+  },
+  {
+    page: Pages.DISCOVER,
+    title: "Discover",
+    icon: "search",
     isPrimaryPage: true,
   },
   {

@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = Field(default=None, env="REDIS_URL")
     redis_queue_key: str = Field(default="lumi:jobs", env="REDIS_QUEUE_KEY")
 
+    # arXiv sanity-lite integration
+    arxiv_sanity_data_dir: str = Field(
+        default="data/arxiv_sanity", env="ARXIV_SANITY_DATA_DIR"
+    )
+    arxiv_sanity_query: str = Field(
+        default=(
+            "cat:cs.CV+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.AI+OR+cat:cs.NE+OR+cat:cs.RO"
+        ),
+        env="ARXIV_SANITY_QUERY",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
