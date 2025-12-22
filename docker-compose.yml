@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./functions
+    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "4000"]
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+
+  worker:
+    build:
+      context: ./functions
+    command: ["python", "-m", "backend.worker"]
+    env_file:
+      - .env
+    depends_on:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+    env_file:
+      - .env
+    environment:
+      API_BASE_URL: "http://localhost:4000"
+    ports:
+      - "4201:4201"
+    depends_on:
+      - backend
