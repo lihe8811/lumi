@@ -61,6 +61,7 @@ def import_arxiv_latex_and_pdf(
     debug=False,
     existing_model_output_file="",
     run_locally: bool = False,
+    storage_client=None,
 ) -> Tuple[LumiDoc, str]:
     """
     Imports and processes the pdf and latex source with the given identifiers.
@@ -73,6 +74,7 @@ def import_arxiv_latex_and_pdf(
         debug (boolean): If true, writes debug output markdown to local file.
         existing_model_output_file (str): If passed, used in place of generating new model output.
         run_locally (bool): If true, saves files locally instead of cloud.
+        storage_client: Optional storage client for image uploads.
 
     Returns:
         Tuple[LumiDoc, str]: The processed document and the first image storage path in the document.
@@ -125,7 +127,7 @@ def import_arxiv_latex_and_pdf(
         lumi_doc = convert_model_output_to_lumi_doc(
             model_output_string=model_output,
             concepts=concepts,
-            file_id=arxiv_id,
+            file_id=f"{arxiv_id}/v{version}",
         )
         lumi_doc.metadata = metadata
 
@@ -136,6 +138,7 @@ def import_arxiv_latex_and_pdf(
                 source_dir=temp_dir,
                 image_contents=all_image_contents,
                 run_locally=run_locally,
+                storage_client=storage_client,
             )
             if len(images) > 0:
                 image_path = images[0].storage_path
@@ -281,7 +284,7 @@ def preprocess_and_replace_figures(
         caption_span = _create_caption_span(caption_text)
 
         flattened_filename = image_path.replace("/", STORAGE_PATH_DELIMETER)
-        storage_path = f"{file_id}/images/{flattened_filename}"
+        storage_path = f"papers/{file_id}/images/{flattened_filename}"
 
         return ImageContent(
             latex_path=image_path,

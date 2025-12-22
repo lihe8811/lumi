@@ -195,17 +195,24 @@ def _inline_tex_files(
                     if bib_files:
                         final_path = os.path.join(path_to_read_dir, bib_files[0])
                     else:
-                        raise FileNotFoundError(
-                            f"No .bbl or .bib files found in {path_to_read_dir}"
+                        warnings.warn(
+                            f"No .bbl or .bib files found in {path_to_read_dir}; skipping bibliography."
                         )
+                        return ""
             except FileNotFoundError:
-                raise
+                warnings.warn(
+                    f"No .bbl or .bib files found in {path_to_read_dir}; skipping bibliography."
+                )
+                return ""
 
         try:
             with open(final_path, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read()
         except FileNotFoundError:
-            raise
+            warnings.warn(
+                f"Bibliography file {final_path} not found; skipping bibliography."
+            )
+            return ""
 
     final_content = bib_pattern.sub(bib_replacer, inlined_content)
 

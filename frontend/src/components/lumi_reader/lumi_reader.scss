@@ -23,7 +23,8 @@ $smart-highlight-menu-width: 185px;
 lumi-reader {
   @include common.full-percentage;
   display: flex;
-  overflow: auto;
+  overflow: hidden;
+  height: 100vh;
 
   @include common.viewport-small {
     flex-direction: column;
@@ -37,7 +38,10 @@ lumi-reader {
     z-index: 1;
 
     flex-shrink: 0;
-    height: 100%;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
 
     @include common.viewport-small {
       min-width: inherit;
@@ -45,6 +49,7 @@ lumi-reader {
       width: inherit;
 
       height: min-content;
+      position: static;
       max-height: 65%;
 
       &.is-mobile-sidebar-collapsed {
@@ -57,6 +62,7 @@ lumi-reader {
   .doc-wrapper {
     flex-grow: 1;
     overflow-y: auto;
+    height: 100vh;
   }
 
   .doc-wrapper {

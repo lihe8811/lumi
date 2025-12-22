@@ -179,11 +179,6 @@ export class ArxivDiscover extends MobxLitElement {
 
   private getImageUrl() {
     return async (path: string) => {
-      if (path.startsWith("assets/")) {
-        const prefix = (process.env.URL_PREFIX ?? "/").replace(/\/+$/, "");
-        const assetPath = path.startsWith("/") ? path : `/${path}`;
-        return `${prefix}${assetPath}`;
-      }
       return this.backendApiService.signUrl(path, "get");
     };
   }

@@ -241,7 +241,12 @@ class PostgresDbClient:
     def __init__(self, database_url: str):
         if not database_url:
             raise ValueError("DATABASE_URL is required for PostgresDbClient")
-        self.engine = create_engine(database_url, future=True)
+        self.engine = create_engine(
+            database_url,
+            future=True,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
         self.Session = sessionmaker(
             bind=self.engine, class_=Session, expire_on_commit=False, future=True
         )

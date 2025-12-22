@@ -38,7 +38,9 @@ logger = logging.getLogger(__name__)
 from shared.types import ImageMetadata
 from shared.lumi_doc import ImageContent
 
-LOCAL_IMAGE_BUCKET_BASE = "../local_image_bucket/"
+LOCAL_IMAGE_BUCKET_BASE = str(
+    (Path(__file__).resolve().parents[2] / "local_image_bucket")
+)
 TEMPORARY_EXTRACTION_DIR = "temp_extraction"
 
 
@@ -304,11 +306,13 @@ def extract_images_from_latex_source(
                     os.makedirs(os.path.dirname(destination_full_path), exist_ok=True)
                     # Copy the file
                     shutil.copy(source_image_path, destination_full_path)
+                    logger.info("Saved image locally to %s", destination_full_path)
                 else:
                     # Upload to cloud storage
                     client = storage_client or get_cloud_storage_client()
                     try:
                         client.upload_file(source_image_path, storage_path)
+                        logger.info("Uploaded image to storage at %s", storage_path)
                     except Exception as e:
                         warnings.warn(
                             f"Failed to upload {source_image_path} to {storage_path}: {e}"

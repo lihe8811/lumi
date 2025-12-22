@@ -13,6 +13,7 @@ from typing import Optional
 
 from backend.db import DbClient, JobRecord
 from backend.dependencies import get_db_client, get_queue_client, get_storage_client
+from backend.storage import InMemoryStorageClient
 from backend.config import get_settings
 from import_pipeline import fetch_utils, import_pipeline, summaries
 from models import extract_concepts as extract_concepts_util
@@ -77,12 +78,17 @@ def process_job(job: JobRecord, db: DbClient) -> None:
             progress_percent=0.25,
         )
         logger.info(f"[{job.job_id}] Starting import pipeline")
+        storage = get_storage_client()
+        logger.info("Storage client: %s", storage.__class__.__name__)
+        run_locally = isinstance(storage, InMemoryStorageClient)
+
         lumi_doc, _ = import_pipeline.import_arxiv_latex_and_pdf(
             arxiv_id=job.arxiv_id,
             version=metadata.version,
             concepts=concepts or [],
             metadata=metadata,
-            run_locally=False,
+            run_locally=run_locally,
+            storage_client=storage,
         )
         logger.info(f"[{job.job_id}] Import pipeline complete")
 
@@ -109,7 +115,6 @@ def process_job(job: JobRecord, db: DbClient) -> None:
         summaries_json = convert_keys(asdict(lumi_doc.summaries), "snake_to_camel")
         db.save_lumi_doc(job.arxiv_id, metadata.version, doc_json, summaries_json)
 
-        storage = get_storage_client()
         base_path = f"papers/{job.arxiv_id}/v{metadata.version}"
         doc_path = f"{base_path}/lumi_doc.json"
         summaries_path = f"{base_path}/summaries.json"
