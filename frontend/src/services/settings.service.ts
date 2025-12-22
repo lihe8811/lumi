@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { action, makeObservable, observable } from "mobx";
+import { action, computed, makeObservable, observable } from "mobx";
 import { Service } from "./service";
 
 import { ColorMode } from "../shared/types";
@@ -31,7 +31,6 @@ interface ServiceProvider {
 
 const TOS_CONFIRMED_LOCAL_STORAGE_KEY = "tosConfirmed";
 const TUTORIAL_CONFIRMED_LOCAL_STORAGE_KEY = "tutorialConfirmed";
-const API_KEY_LOCAL_STORAGE_KEY = "userApiKey";
 const DISCOVER_CATEGORIES_LOCAL_STORAGE_KEY = "discoverCategories";
 const DEFAULT_DISCOVER_CATEGORIES = [
   "cs.CV",
@@ -60,24 +59,44 @@ export class SettingsService extends Service {
         TUTORIAL_CONFIRMED_LOCAL_STORAGE_KEY,
         false
       );
-    this.apiKey = this.sp.localStorageService.makeLocalStorageHelper(
-      API_KEY_LOCAL_STORAGE_KEY,
-      ""
-    );
     this.discoverCategories = this.sp.localStorageService.makeLocalStorageHelper(
       DISCOVER_CATEGORIES_LOCAL_STORAGE_KEY,
       DEFAULT_DISCOVER_CATEGORIES
     );
+    this.discoverCategoriesDraft = this.discoverCategories.value.join(", ");
   }
 
   @observable colorMode: ColorMode = ColorMode.DEFAULT;
 
   readonly isTosConfirmed: LocalStorageHelper<boolean>;
   readonly isTutorialConfirmed: LocalStorageHelper<boolean>;
-  readonly apiKey: LocalStorageHelper<string>;
   readonly discoverCategories: LocalStorageHelper<string[]>;
+  @observable discoverCategoriesDraft = "";
 
   @action setColorMode(colorMode: ColorMode) {
     this.colorMode = colorMode;
+  }
+
+  @computed
+  get isDiscoverCategoriesDirty() {
+    return (
+      this.discoverCategoriesDraft.trim() !==
+      this.discoverCategories.value.join(", ")
+    );
+  }
+
+  @action
+  setDiscoverCategoriesDraft(value: string) {
+    this.discoverCategoriesDraft = value;
+  }
+
+  @action
+  saveDiscoverCategories() {
+    const categories = this.discoverCategoriesDraft
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    this.discoverCategories.value = categories;
+    this.discoverCategoriesDraft = categories.join(", ");
   }
 }

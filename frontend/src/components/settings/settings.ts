@@ -48,26 +48,6 @@ export class Settings extends MobxLitElement {
           <reading-history showTitle></reading-history>
         </div>
         <div class="section">
-          <h2>Model API Key</h2>
-          <div>
-            Optional: Use your own
-            <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank" rel="noopener noreferrer">Gemini API key</a>
-            for "Ask Lumi"
-            queries inside a paper. Your API key will never be used to
-            import papers.
-          </div>
-          <div class="field">
-            <pr-textinput
-              .value=${this.settingsService.apiKey.value}
-              .onChange=${(e: InputEvent) => {
-                const value = (e.target as HTMLInputElement).value;
-                this.settingsService.apiKey.value = value;
-              }}
-              placeholder="Paste Gemini API key here"
-            ></pr-textinput>
-          </div>
-        </div>
-        <div class="section">
           <h2>Discover categories</h2>
           <div>
             Choose arXiv categories to surface in Discover. Use comma-separated
@@ -75,17 +55,24 @@ export class Settings extends MobxLitElement {
           </div>
           <div class="field">
             <pr-textinput
-              .value=${this.settingsService.discoverCategories.value.join(", ")}
+              .value=${this.settingsService.discoverCategoriesDraft}
               .onChange=${(e: InputEvent) => {
                 const value = (e.target as HTMLInputElement).value;
-                const categories = value
-                  .split(",")
-                  .map((item) => item.trim())
-                  .filter((item) => item.length > 0);
-                this.settingsService.discoverCategories.value = categories;
+                this.settingsService.setDiscoverCategoriesDraft(value);
               }}
               placeholder="cs.CV, cs.LG, cs.CL"
             ></pr-textinput>
+          </div>
+          <div class="action-buttons">
+            <pr-button
+              variant="filled"
+              @click=${() => {
+                this.settingsService.saveDiscoverCategories();
+              }}
+              ?disabled=${!this.settingsService.isDiscoverCategoriesDirty}
+            >
+              Save
+            </pr-button>
           </div>
         </div>
         <div class="section">
