@@ -202,7 +202,7 @@ def check_target_in_path(full_path: str, target: str) -> bool:
     else:
         pattern = f"(^|/){escaped_target}$"
 
-    return re.search(pattern, full_path) is not None
+    return re.search(pattern, full_path, flags=re.IGNORECASE) is not None
 
 def extract_images_from_latex_source(
     source_dir: str,
@@ -250,8 +250,21 @@ def extract_images_from_latex_source(
                         found_paths.append(full_path)
             
             if len(found_paths) == 0:
-                warnings.warn(f"Could not find image matching path suffix '{latex_path}' in any subdirectory of '{source_dir}'")
-                continue
+                # Retry without extension if the LaTeX path includes one.
+                base_no_ext, ext = os.path.splitext(latex_path)
+                if ext:
+                    for root, _, files in os.walk(source_dir):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            if check_target_in_path(
+                                full_path=full_path, target=base_no_ext
+                            ):
+                                found_paths.append(full_path)
+                if len(found_paths) == 0:
+                    warnings.warn(
+                        f"Could not find image matching path suffix '{latex_path}' in any subdirectory of '{source_dir}'"
+                    )
+                    continue
             
             if len(found_paths) > 1:
                 # This case should be rare if paths are specific enough, but is a safeguard.
@@ -334,6 +347,77 @@ def extract_images_from_latex_source(
                 ))
             except Exception as e:
                 warnings.warn(f"Could not process image {latex_path}: {e}")
+                continue
+
+    return processed_image_metadata
+
+
+def extract_images_from_pdf_bytes(
+    pdf_bytes: bytes,
+    image_contents: List[ImageContent],
+    run_locally: bool = False,
+    storage_client: StorageClient | None = None,
+    max_pages: int = 8,
+) -> List[ImageMetadata]:
+    """
+    Fallback: renders PDF pages to images and maps them to missing ImageContent entries.
+    """
+    processed_image_metadata: List[ImageMetadata] = []
+    if not pdf_bytes or not image_contents:
+        return processed_image_metadata
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        pdf_path = os.path.join(temp_dir, "document.pdf")
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        pdf = pdfium.PdfDocument(pdf_path)
+        num_pages = min(len(pdf), max_pages, len(image_contents))
+        for idx in range(num_pages):
+            image_content = image_contents[idx]
+            page = pdf.get_page(idx)
+            pil_image = page.render(scale=2).to_pil()
+            temp_png_path = os.path.join(temp_dir, f"page_{idx + 1}.png")
+            pil_image.save(temp_png_path, format="PNG")
+
+            # Update storage path to .png if needed.
+            path = Path(image_content.storage_path)
+            if path.suffix.lower() != ".png":
+                image_content.storage_path = str(path.with_suffix(".png"))
+
+            try:
+                with Image.open(temp_png_path) as img:
+                    width, height = float(img.width), float(img.height)
+
+                if run_locally:
+                    destination_full_path = os.path.join(
+                        LOCAL_IMAGE_BUCKET_BASE, image_content.storage_path
+                    )
+                    os.makedirs(os.path.dirname(destination_full_path), exist_ok=True)
+                    shutil.copy(temp_png_path, destination_full_path)
+                    logger.info(
+                        "Saved fallback PDF image locally to %s",
+                        destination_full_path,
+                    )
+                else:
+                    client = storage_client or get_cloud_storage_client()
+                    client.upload_file(temp_png_path, image_content.storage_path)
+                    logger.info(
+                        "Uploaded fallback PDF image to storage at %s",
+                        image_content.storage_path,
+                    )
+
+                image_content.width = width
+                image_content.height = height
+                processed_image_metadata.append(
+                    ImageMetadata(
+                        storage_path=image_content.storage_path,
+                        width=width,
+                        height=height,
+                    )
+                )
+            except Exception as e:
+                warnings.warn(f"Could not process fallback PDF image: {e}")
                 continue
 
     return processed_image_metadata

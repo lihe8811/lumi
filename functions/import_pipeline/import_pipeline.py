@@ -15,6 +15,8 @@
 
 import re
 import tempfile
+import time
+import concurrent.futures
 from typing import Dict, List, Optional, Tuple
 from import_pipeline import fetch_utils
 from import_pipeline import markdown_utils
@@ -44,6 +46,9 @@ from shared.constants import (
     PLACEHOLDER_SUFFIX,
 )
 from shared.utils import get_unique_id
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TEXT_TAGS = ["p", "code", "pre"]
 ORDERED_LIST_TAG = "ol"
@@ -81,14 +86,28 @@ def import_arxiv_latex_and_pdf(
     """
     # Fetch PDF bytes
     if not existing_model_output_file:
+        logger.info("Import pipeline: fetching PDF bytes for %s v%s", arxiv_id, version)
         # TODO(ellenj): Investigate why export.arxiv.org endpoint is not working.
         # Making this fetch from arxiv.org for now.
         pdf_data = fetch_utils.fetch_pdf_bytes(
             f"https://arxiv.org/pdf/{arxiv_id}v{version}"
         )
+        logger.info(
+            "Import pipeline: fetched PDF bytes (%d bytes) for %s v%s",
+            len(pdf_data),
+            arxiv_id,
+            version,
+        )
 
     # Fetch and process LaTeX source (may be None if only PDF is available)
+    logger.info("Import pipeline: fetching LaTeX source for %s v%s", arxiv_id, version)
     latex_source_bytes = fetch_utils.fetch_latex_source(arxiv_id, version)
+    logger.info(
+        "Import pipeline: fetched LaTeX source (%s) for %s v%s",
+        f"{len(latex_source_bytes)} bytes" if latex_source_bytes else "none",
+        arxiv_id,
+        version,
+    )
 
     latex_string = ""
     image_path = ""
@@ -96,12 +115,33 @@ def import_arxiv_latex_and_pdf(
     with tempfile.TemporaryDirectory() as temp_dir:
         if latex_source_bytes:
             try:
+                logger.info("Import pipeline: extracting LaTeX source for %s v%s", arxiv_id, version)
                 latex_utils.extract_tar_gz(latex_source_bytes, temp_dir)
                 main_tex_file = latex_utils.find_main_tex_file(temp_dir)
-                latex_string = latex_utils.inline_tex_files(
+                logger.info("Import pipeline: found main TeX file %s", main_tex_file)
+                # Inline TeX can hang on large/recursive inputs; guard with a timeout.
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    latex_utils.inline_tex_files,
                     main_tex_file,
                     remove_comments=True,
                     inline_commands=True,
+                )
+                try:
+                    latex_string = future.result(timeout=30)
+                except concurrent.futures.TimeoutError:
+                    logger.warning(
+                        "Import pipeline: inline_tex_files timed out; continuing without LaTeX"
+                    )
+                    future.cancel()
+                    latex_string = ""
+                finally:
+                    executor.shutdown(wait=False)
+                logger.info(
+                    "Import pipeline: inlined LaTeX content (%d chars) for %s v%s",
+                    len(latex_string),
+                    arxiv_id,
+                    version,
                 )
             except (ValueError, FileNotFoundError) as e:
                 raise
@@ -114,8 +154,16 @@ def import_arxiv_latex_and_pdf(
                 model_output = file.read()
         else:
             # Format into markdown with Gemini, using both PDF and LaTeX when available.
+            start_time = time.time()
+            logger.info("Import pipeline: calling Gemini format_pdf_with_latex for %s v%s", arxiv_id, version)
             model_output = gemini.format_pdf_with_latex(
                 pdf_data=pdf_data, latex_string=latex_string, concepts=concepts
+            )
+            logger.info(
+                "Import pipeline: Gemini format_pdf_with_latex completed in %.2fs for %s v%s",
+                time.time() - start_time,
+                arxiv_id,
+                version,
             )
 
         if debug:
@@ -140,6 +188,23 @@ def import_arxiv_latex_and_pdf(
                 run_locally=run_locally,
                 storage_client=storage_client,
             )
+            missing_images = [
+                content
+                for content in all_image_contents
+                if content.width == 0 and content.height == 0
+            ]
+            if missing_images:
+                logger.warning(
+                    "Import pipeline: %d images missing from LaTeX; falling back to PDF rendering",
+                    len(missing_images),
+                )
+                fallback_images = image_utils.extract_images_from_pdf_bytes(
+                    pdf_data,
+                    image_contents=missing_images,
+                    run_locally=run_locally,
+                    storage_client=storage_client,
+                )
+                images.extend(fallback_images)
             if len(images) > 0:
                 image_path = images[0].storage_path
 
