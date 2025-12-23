@@ -270,6 +270,8 @@ export class HistoryService extends Service {
     const existingPaper = this.getPaperData(docId);
     if (existingPaper) {
       existingPaper.status = "complete";
+      existingPaper.metadata = metadata;
+      this.paperMetadata.set(docId, metadata);
       this.sp.localStorageService.setData(
         `${PAPER_KEY_PREFIX}${docId}`,
         existingPaper

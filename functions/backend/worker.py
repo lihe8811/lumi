@@ -82,7 +82,7 @@ def process_job(job: JobRecord, db: DbClient) -> None:
         logger.info("Storage client: %s", storage.__class__.__name__)
         run_locally = isinstance(storage, InMemoryStorageClient)
 
-        lumi_doc, _ = import_pipeline.import_arxiv_latex_and_pdf(
+        lumi_doc, image_path = import_pipeline.import_arxiv_latex_and_pdf(
             arxiv_id=job.arxiv_id,
             version=metadata.version,
             concepts=concepts or [],
@@ -112,6 +112,12 @@ def process_job(job: JobRecord, db: DbClient) -> None:
         logger.info(f"[{job.job_id}] Summaries complete")
 
         doc_json = convert_keys(asdict(lumi_doc), "snake_to_camel")
+        if image_path:
+            metadata_payload = doc_json.get("metadata") or {}
+            metadata_payload["featuredImage"] = {
+                "imageStoragePath": image_path
+            }
+            doc_json["metadata"] = metadata_payload
         summaries_json = convert_keys(asdict(lumi_doc.summaries), "snake_to_camel")
         db.save_lumi_doc(job.arxiv_id, metadata.version, doc_json, summaries_json)
 

@@ -135,9 +135,9 @@ h1 {
 }
 
 .preview-image {
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 16 / 9;
   flex-shrink: 0;
-  height: 160px;
+  height: 176px;
   object-fit: cover;
   overflow: hidden;
   width: 100%;

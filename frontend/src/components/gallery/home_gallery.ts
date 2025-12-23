@@ -357,8 +357,10 @@ export class HomeGallery extends MobxLitElement {
         Date.now() - stored.addedTimestamp < 24 * 60 * 60 * 1000;
       const showNewBadge = stored?.status === "complete" && isUnread && isRecent;
 
+      const featuredImage = (metadata as any)?.featuredImage;
       const imagePath =
-        (metadata as any)?.featuredImage?.image_storage_path ||
+        featuredImage?.imageStoragePath ||
+        featuredImage?.image_storage_path ||
         (metadata as any)?.featured_image?.image_storage_path ||
         DEFAULT_COVER_IMAGE_PATH;
       const status = this.loadingStatusMap.get(metadata.paperId);
