@@ -22,13 +22,21 @@ import "../gallery/home_gallery";
 import { MobxLitElement } from "@adobe/lit-mobx";
 import { CSSResultGroup, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 
 import { core } from "../../core/core";
 import { BackendApiService } from "../../services/backend_api.service";
 import { getArxivPaperUrl } from "../../services/router.service";
+import { HistoryService } from "../../services/history.service";
 import { SettingsService } from "../../services/settings.service";
-import { ArxivMetadata } from "../../shared/lumi_doc";
+import {
+  ArxivMetadata,
+  LOADING_STATUS_ERROR_STATES,
+  LoadingStatus,
+  LumiDoc,
+} from "../../shared/lumi_doc";
 import { styles } from "./arxiv_discover.scss";
+import { makeObservable, ObservableMap, observable } from "mobx";
 
 type DiscoverMode = "recent" | "search";
 
@@ -37,6 +45,7 @@ export class ArxivDiscover extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
 
   private readonly backendApiService = core.getService(BackendApiService);
+  private readonly historyService = core.getService(HistoryService);
   private readonly settingsService = core.getService(SettingsService);
   private readonly pageSize = 25;
 
@@ -47,6 +56,14 @@ export class ArxivDiscover extends MobxLitElement {
   @state() private papers: ArxivMetadata[] = [];
   @state() private total = 0;
   @state() private page = 1;
+
+  private loadingStatusMap = new ObservableMap<string, LoadingStatus>();
+  @observable.shallow private pendingJobs = new ObservableMap<string, string>();
+
+  constructor() {
+    super();
+    makeObservable(this);
+  }
 
   override firstUpdated() {
     this.loadRecent(true);
@@ -86,7 +103,15 @@ export class ArxivDiscover extends MobxLitElement {
               this.pageSize,
               categories
             );
-      const items = resp.papers.map((paper) => paper.metadata);
+      const items = resp.papers
+        .map((paper) => paper.metadata)
+        .filter((paper) => {
+          if (!categories || categories.length === 0) {
+            return true;
+          }
+          const paperCategories = paper.categories ?? [];
+          return categories.some((cat) => paperCategories.includes(cat));
+        });
       this.papers = reset ? items : [...this.papers, ...items];
       this.total = resp.total;
       this.page = resp.page;
@@ -95,6 +120,61 @@ export class ArxivDiscover extends MobxLitElement {
     } finally {
       this.isLoading = false;
     }
+  }
+
+  private async handleAddToLumi(paper: ArxivMetadata) {
+    const status = this.loadingStatusMap.get(paper.paperId);
+    if (status === LoadingStatus.SUCCESS) {
+      window.location.reload();
+      return;
+    }
+    if (this.pendingJobs.has(paper.paperId)) {
+      return;
+    }
+
+    try {
+      const resp = await this.backendApiService.requestImport(paper.paperId);
+      const jobId = resp.job_id;
+      this.pendingJobs.set(paper.paperId, jobId);
+      this.loadingStatusMap.set(paper.paperId, LoadingStatus.WAITING);
+      this.pollJob(paper.paperId, jobId);
+    } catch (error) {
+      this.errorMessage = (error as Error).message;
+    }
+  }
+
+  private async pollJob(paperId: string, jobId: string) {
+    const maxAttempts = 120;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const status = await this.backendApiService.jobStatus(jobId);
+        const state = status.status as LoadingStatus;
+        this.loadingStatusMap.set(paperId, state);
+        if (state === LoadingStatus.SUCCESS) {
+          const version = status.version ?? "1";
+          const docResp = await this.backendApiService.getLumiDoc(
+            paperId,
+            version
+          );
+          const lumiDoc = docResp.doc as LumiDoc;
+          lumiDoc.summaries = docResp.summaries;
+          this.historyService.addPaper(
+            paperId,
+            lumiDoc.metadata as ArxivMetadata
+          );
+          this.pendingJobs.delete(paperId);
+          return;
+        }
+        if (LOADING_STATUS_ERROR_STATES.includes(state)) {
+          this.pendingJobs.delete(paperId);
+          return;
+        }
+      } catch (error) {
+        console.error("Error polling job status:", error);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    this.pendingJobs.delete(paperId);
   }
 
   private get hasMore() {
@@ -156,6 +236,13 @@ export class ArxivDiscover extends MobxLitElement {
   }
 
   private formatCategoryBadge(categories?: string[]) {
+    const filters = this.settingsService.discoverCategories.value;
+    if (filters && filters.length > 0 && categories) {
+      const match = filters.find((cat) => categories.includes(cat));
+      if (match) {
+        return match;
+      }
+    }
     if (!categories || categories.length === 0) {
       return "";
     }
@@ -221,9 +308,33 @@ export class ArxivDiscover extends MobxLitElement {
                     window.open(getArxivPaperUrl(paper.paperId), "_blank")}
                   >Open on arXiv</pr-button
                 >
-                <pr-button class="cta-pill" variant="tonal" slot="actions" disabled
-                  >Add to Lumi (soon)</pr-button
-                >
+                ${(() => {
+                  const status = this.loadingStatusMap.get(paper.paperId);
+                  const isSuccess = status === LoadingStatus.SUCCESS;
+                  const isPending =
+                    status === LoadingStatus.WAITING ||
+                    status === LoadingStatus.SUMMARIZING;
+                  const classes = classMap({
+                    "cta-pill": true,
+                    "cta-pill--reload": isSuccess,
+                  });
+                  const label = isSuccess
+                    ? "Reload"
+                    : isPending
+                    ? "Adding..."
+                    : "Add to Lumi";
+                  return html`
+                    <pr-button
+                      class=${classes}
+                      variant="tonal"
+                      slot="actions"
+                      ?disabled=${isPending}
+                      @click=${() => this.handleAddToLumi(paper)}
+                    >
+                      ${label}
+                    </pr-button>
+                  `;
+                })()}
               </paper-card>
             </div>
           `
