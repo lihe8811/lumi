@@ -116,6 +116,13 @@
   opacity: 1;
 }
 
+.cta-pill--reload {
+  --pr-button-color: #dd5c56;
+  --pr-button-background: #ffffff;
+  --pr-button-border: 1px solid #dd5c56;
+  box-shadow: 0 4px 10px rgba(221, 92, 86, 0.16);
+}
+
 .footer {
   @include common.flex-row;
   justify-content: center;

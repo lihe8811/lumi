@@ -124,7 +124,12 @@ export class ArxivDiscover extends MobxLitElement {
 
   private async handleAddToLumi(paper: ArxivMetadata) {
     const status = this.loadingStatusMap.get(paper.paperId);
+    const existing = this.historyService.getPaperData(paper.paperId);
+    if (existing?.status === "complete") {
+      this.loadingStatusMap.set(paper.paperId, LoadingStatus.SUCCESS);
+    }
     if (status === LoadingStatus.SUCCESS) {
+      this.loadingStatusMap.set(paper.paperId, LoadingStatus.WAITING);
       window.location.reload();
       return;
     }
@@ -310,7 +315,10 @@ export class ArxivDiscover extends MobxLitElement {
                 >
                 ${(() => {
                   const status = this.loadingStatusMap.get(paper.paperId);
-                  const isSuccess = status === LoadingStatus.SUCCESS;
+                  const stored = this.historyService.getPaperData(paper.paperId);
+                  const isStoredComplete = stored?.status === "complete";
+                  const isSuccess =
+                    status === LoadingStatus.SUCCESS || isStoredComplete;
                   const isPending =
                     status === LoadingStatus.WAITING ||
                     status === LoadingStatus.SUMMARIZING;
@@ -321,7 +329,7 @@ export class ArxivDiscover extends MobxLitElement {
                   const label = isSuccess
                     ? "Reload"
                     : isPending
-                    ? "Adding..."
+                    ? "Adding"
                     : "Add to Lumi";
                   return html`
                     <pr-button
