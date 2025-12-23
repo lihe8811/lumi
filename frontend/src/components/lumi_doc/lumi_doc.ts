@@ -78,6 +78,7 @@ export class LumiDocViz extends LightMobxLitElement {
 
   private intersectionObserver?: IntersectionObserver;
   private scrollRef: Ref<HTMLElement> = createRef<HTMLElement>();
+  private scrollContainer?: HTMLElement;
 
   get lumiDoc() {
     return this.lumiDocManager.lumiDoc;
@@ -88,12 +89,19 @@ export class LumiDocViz extends LightMobxLitElement {
   }
 
   override firstUpdated() {
-    const scrollableElement = this.scrollRef.value;
+    const scrollableElement =
+      (this.closest(".doc-wrapper") as HTMLElement | null) ??
+      this.scrollRef.value;
     if (!scrollableElement) {
       console.error(
         "Lumi-doc scrollable element not found for IntersectionObserver"
       );
       return;
+    }
+
+    this.scrollContainer = scrollableElement;
+    if (this.scrollContainer !== this.scrollRef.value) {
+      this.scrollContainer.addEventListener("scroll", this.onScroll);
     }
 
     this.intersectionObserver = new IntersectionObserver(
@@ -120,6 +128,9 @@ export class LumiDocViz extends LightMobxLitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.intersectionObserver?.disconnect();
+    if (this.scrollContainer && this.scrollContainer !== this.scrollRef.value) {
+      this.scrollContainer.removeEventListener("scroll", this.onScroll);
+    }
     this.removeEventListener(
       LumiContentRenderedEvent.eventName,
       this.handleLumiContentRendered as EventListener
