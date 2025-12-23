@@ -23,6 +23,7 @@ import {
   PartType,
 } from "lit/directive.js";
 import katex from "katex";
+import { sanitizeLatexForKatex } from "../shared/katex_utils";
 
 function makeErrorSpan(equationText: string, error: Error) {
   const span = document.createElement("span");
@@ -66,13 +67,16 @@ class KatexDirective extends Directive {
   update(part: ElementPart, [equationText, displayMode]: [string, boolean]) {
     // `part.element` is the DOM element the directive is attached to.
     // By the time `update` is called, this element is guaranteed to exist.
+    const sanitizedEquationText = sanitizeLatexForKatex(equationText);
     try {
-      katex.render(equationText, part.element as HTMLElement, {
+      katex.render(sanitizedEquationText, part.element as HTMLElement, {
         throwOnError: true,
         displayMode,
       });
     } catch (error) {
-      part.element.appendChild(makeErrorSpan(equationText, error as Error));
+      part.element.appendChild(
+        makeErrorSpan(sanitizedEquationText, error as Error)
+      );
     }
   }
 }

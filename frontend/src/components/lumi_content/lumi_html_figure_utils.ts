@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import katex from "katex";
+import { sanitizeLatexForKatex } from "../../shared/katex_utils";
 
 export const PLACEHOLDER_PREFIX = "__LATEX_PLACEHOLDER_";
 
@@ -87,8 +88,9 @@ export function renderKatexInHtml(container: Element, latex: string[]) {
             const expression = latex[latexIndex];
             if (expression !== undefined) {
               const span = document.createElement("span");
+              const sanitizedExpression = sanitizeLatexForKatex(expression);
               try {
-                katex.render(expression, span, {
+                katex.render(sanitizedExpression, span, {
                   throwOnError: false,
                   displayMode: false,
                 });
@@ -96,7 +98,9 @@ export function renderKatexInHtml(container: Element, latex: string[]) {
               } catch (e) {
                 console.error("KaTeX rendering failed:", e);
                 // Revert to expression text on failure.
-                newNodes.appendChild(document.createTextNode(expression));
+                newNodes.appendChild(
+                  document.createTextNode(sanitizedExpression)
+                );
               }
             }
           } else if (fragment) {

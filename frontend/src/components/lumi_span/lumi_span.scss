@@ -184,6 +184,14 @@ span.collapsed {
     display: none;
   }
 
+  .katex {
+    font-family: "Computer Modern Serif", "CMU Serif", "Times New Roman", serif;
+  }
+
+  math {
+    font-family: "Computer Modern Serif", "CMU Serif", "Times New Roman", serif;
+  }
+
   .citation-marker {
     display: inline-flex;
     gap: common.$spacing-small;
