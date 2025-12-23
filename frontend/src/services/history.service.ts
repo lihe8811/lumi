@@ -290,6 +290,22 @@ export class HistoryService extends Service {
   }
 
   /**
+   * Marks a paper as opened.
+   * @param docId The ID of the document.
+   */
+  markPaperOpened(docId: string) {
+    const existingPaper = this.getPaperData(docId);
+    if (!existingPaper) {
+      return;
+    }
+    existingPaper.openedTimestamp = Date.now();
+    this.sp.localStorageService.setData(
+      `${PAPER_KEY_PREFIX}${docId}`,
+      existingPaper
+    );
+  }
+
+  /**
    * Deletes a paper and its history.
    * @param docId The ID of the document to delete.
    */

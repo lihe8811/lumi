@@ -350,6 +350,13 @@ export class HomeGallery extends MobxLitElement {
         return nothing;
       }
 
+      const stored = this.historyService.getPaperData(metadata.paperId);
+      const isUnread = !stored?.openedTimestamp;
+      const isRecent =
+        !!stored?.addedTimestamp &&
+        Date.now() - stored.addedTimestamp < 24 * 60 * 60 * 1000;
+      const showNewBadge = stored?.status === "complete" && isUnread && isRecent;
+
       const imagePath =
         (metadata as any)?.featuredImage?.image_storage_path ||
         (metadata as any)?.featured_image?.image_storage_path ||
@@ -367,6 +374,9 @@ export class HomeGallery extends MobxLitElement {
             .image=${ifDefined({ image_storage_path: imagePath })}
             .getImageUrl=${this.getImageUrl()}
           >
+            ${showNewBadge
+              ? html`<span class="paper-new-badge" slot="corner">New</span>`
+              : nothing}
           </paper-card>
         </a>
       `;

@@ -132,6 +132,7 @@ export class LumiReader extends LightMobxLitElement {
     this.documentStateService.setScrollState(this.scrollState);
     this.historyService.setScrollState(this.scrollState);
     if (this.documentId) {
+      this.historyService.markPaperOpened(this.documentId);
       this.loadDocument();
     }
 

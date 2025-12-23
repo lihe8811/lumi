@@ -24,4 +24,5 @@ export interface PaperData {
   personalSummary?: LumiAnswer;
   status: "loading" | "complete";
   addedTimestamp?: number;
+  openedTimestamp?: number;
 }
