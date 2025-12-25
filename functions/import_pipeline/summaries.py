@@ -59,9 +59,9 @@ class LabelSchema(BaseModel):
 
 MIN_CHARACTER_LENGTH = 100
 
-SPAN_SUMMARIES_DEFAULT_BATCH_SIZE = 500
-SECTION_SUMMARIES_DEFAULT_BATCH_SIZE = 50
-CONTENT_SUMMARIES_DEFAULT_BATCH_SIZE = 100
+SPAN_SUMMARIES_DEFAULT_BATCH_SIZE = 250
+SECTION_SUMMARIES_DEFAULT_BATCH_SIZE = 25
+CONTENT_SUMMARIES_DEFAULT_BATCH_SIZE = 40
 
 # Shared prompt instructions
 _PROMPT_FORMATTING_INSTRUCTIONS = """You can use markdown for formatting, like <b>bold</b>. For any equations or variables, make sure to use $...$ for any inline math (including \\sqrt)."""
@@ -232,26 +232,27 @@ def generate_span_summaries(
     spans = _get_all_spans_from_doc(document)
     all_summaries: List[LumiSummary] = []
 
-    prompts = []
-    for i in range(0, len(spans), batch_size):
-        sentences = spans[i : i + batch_size]
-        prompt = _generate_span_summaries_prompt(sentences)
-        prompts.append(prompt)
-
-    for prompt in prompts:
+    def summarize_batch(batch_spans: List[LumiSpan]) -> List[LumiSummary]:
+        if not batch_spans:
+            return []
+        prompt = _generate_span_summaries_prompt(batch_spans)
         schema_labels = gemini.call_predict_with_schema(
             prompt, response_schema=list[LabelSchema]
         )
         if schema_labels:
-            # Convert from List[LabelSchema] to List[LumiSummary]
-            summaries = [
+            return [
                 LumiSummary(id=sl.id, summary=_create_summary_span(sl.label))
                 for sl in schema_labels
             ]
-            all_summaries.extend(summaries)
-        else:
-            print(f"Failed to parse JSON response for span summaries.")
-            continue
+        if len(batch_spans) == 1:
+            print("Failed to parse JSON response for span summaries.")
+            return []
+        mid = len(batch_spans) // 2
+        return summarize_batch(batch_spans[:mid]) + summarize_batch(batch_spans[mid:])
+
+    for i in range(0, len(spans), batch_size):
+        sentences = spans[i : i + batch_size]
+        all_summaries.extend(summarize_batch(sentences))
 
     return all_summaries
 
@@ -300,23 +301,27 @@ def generate_section_summaries(
     all_summaries: List[LumiSummary] = []
     all_sections_data = _get_all_sections_with_text(document)
 
-    for i in range(0, len(all_sections_data), batch_size):
-        batch_data = all_sections_data[i : i + batch_size]
+    def summarize_batch(batch_data: List[Dict[str, str]]) -> List[LumiSummary]:
+        if not batch_data:
+            return []
         prompt = _generate_section_summaries_prompt(batch_data)
         schema_labels = gemini.call_predict_with_schema(
             prompt, response_schema=list[LabelSchema]
         )
-
         if schema_labels:
-            # Convert from List[LabelSchema] to List[LumiSummary]
-            summaries = [
+            return [
                 LumiSummary(id=sl.id, summary=_create_summary_span(sl.label))
                 for sl in schema_labels
             ]
-            all_summaries.extend(summaries)
-        else:
-            print(f"Failed to parse JSON response for section summaries.")
-            continue
+        if len(batch_data) == 1:
+            print("Failed to parse JSON response for section summaries.")
+            return []
+        mid = len(batch_data) // 2
+        return summarize_batch(batch_data[:mid]) + summarize_batch(batch_data[mid:])
+
+    for i in range(0, len(all_sections_data), batch_size):
+        batch_data = all_sections_data[i : i + batch_size]
+        all_summaries.extend(summarize_batch(batch_data))
     return all_summaries
 
 
@@ -368,22 +373,26 @@ def generate_content_summaries(
     all_summaries: List[LumiSummary] = []
     all_contents_data = _get_all_contents_with_text(document)
 
-    for i in range(0, len(all_contents_data), batch_size):
-        batch_data = all_contents_data[i : i + batch_size]
+    def summarize_batch(batch_data: List[Dict[str, str]]) -> List[LumiSummary]:
+        if not batch_data:
+            return []
         prompt = _get_generate_content_summaries_prompt(batch_data)
         schema_labels = gemini.call_predict_with_schema(
             prompt, response_schema=list[LabelSchema]
         )
-
         if schema_labels:
-            # Convert from List[LabelSchema] to List[LumiSummary]
-            summaries = [
+            return [
                 LumiSummary(id=sl.id, summary=_create_summary_span(sl.label))
                 for sl in schema_labels
             ]
-            all_summaries.extend(summaries)
-        else:
-            print(f"Failed to parse JSON response for content summaries.")
-            continue
+        if len(batch_data) == 1:
+            print("Failed to parse JSON response for content summaries.")
+            return []
+        mid = len(batch_data) // 2
+        return summarize_batch(batch_data[:mid]) + summarize_batch(batch_data[mid:])
+
+    for i in range(0, len(all_contents_data), batch_size):
+        batch_data = all_contents_data[i : i + batch_size]
+        all_summaries.extend(summarize_batch(batch_data))
 
     return all_summaries
