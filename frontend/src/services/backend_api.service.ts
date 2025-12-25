@@ -66,6 +66,8 @@ export class BackendApiService extends Service {
     makeObservable(this);
   }
 
+  private readonly signUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
   override initialize(): void {
     this.setInitialized();
   }
@@ -97,6 +99,26 @@ export class BackendApiService extends Service {
     return this.request("/api/request_arxiv_doc_import", "POST", {
       arxiv_id: arxivId,
     });
+  }
+
+  async requestLocalPdfImport(
+    file: File,
+    title?: string
+  ): Promise<RequestImportResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (title) {
+      formData.append("title", title);
+    }
+    const resp = await fetch(this.url("/api/request_local_pdf_import"), {
+      method: "POST",
+      body: formData,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${text || resp.statusText}`);
+    }
+    return (await resp.json()) as RequestImportResponse;
   }
 
   async jobStatus(jobId: string): Promise<JobStatusResponse> {
@@ -179,6 +201,13 @@ export class BackendApiService extends Service {
   }
 
   async signUrl(path: string, op: "get" | "put" = "get"): Promise<string> {
+    const cacheKey = `${op}:${path}`;
+    const cached = this.signUrlCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.url;
+    }
+
     const resp = await fetch(
       this.url(`/api/sign-url?path=${encodeURIComponent(path)}&op=${op}`),
       {
@@ -190,6 +219,11 @@ export class BackendApiService extends Service {
       throw new Error(`HTTP ${resp.status}: ${text || resp.statusText}`);
     }
     const data = (await resp.json()) as { url: string };
+    // Presigned URLs default to 1 hour; refresh a bit early.
+    this.signUrlCache.set(cacheKey, {
+      url: data.url,
+      expiresAt: now + 55 * 60 * 1000,
+    });
     return data.url;
   }
 }

@@ -21,7 +21,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { classMap } from "lit/directives/class-map.js";
 import { styles } from "./lumi_image.scss";
-import { makeObservable, observable } from "mobx";
+import { makeObservable } from "mobx";
 
 /**
  * A reusable component for loading and displaying images with loading and error
@@ -38,7 +38,7 @@ export class LumiImage extends MobxLitElement {
   @property({ type: Boolean }) highlighted = false;
   @property({ type: Boolean }) enableHover = false;
 
-  @observable private imageUrl: string | null = null;
+  @state() private imageUrl: string | null = null;
   @state() private isLoading = true;
   @state() private hasError = false;
 
@@ -106,6 +106,7 @@ export class LumiImage extends MobxLitElement {
         }}
       >
         <img
+          loading="lazy"
           src=${ifDefined(this.imageUrl)}
           alt=${ifDefined(this.altText)}
           title=${this.title}
