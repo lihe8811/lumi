@@ -64,6 +64,11 @@ Batch import (edit the paper list in the script):
 python3 scripts/import_papers_local.py [--debug] [--skip_summaries]
 ```
 
+Backfill Lumi doc chunks (index + sections) to storage:
+```bash
+python3 scripts/backfill_lumi_doc_chunks.py [--dry-run] [--batch-size 100] [--offset 0] [--limit 1000]
+```
+
 ## Local PDF upload (API)
 You can upload a PDF directly via the API and track the job status:
 ```bash

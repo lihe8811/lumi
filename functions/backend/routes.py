@@ -9,6 +9,7 @@ import os
 import tempfile
 import re
 import io
+import json
 from uuid import uuid4
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -24,7 +25,7 @@ from backend.dependencies import (
 from backend.arxiv_sanity import DEFAULT_PAGE_SIZE
 from backend.db import DbClient, FeedbackRecord
 from backend.queue import JobQueue
-from backend.schemas import LumiDocResponse
+from backend.schemas import LumiDocResponse, LumiDocSectionResponse
 from backend.schemas import (
     AnswerRequest,
     AnswerResponse,
@@ -44,6 +45,7 @@ from backend.schemas import (
 )
 from backend.arxiv_sanity import ArxivSanityStore
 from backend.storage import StorageClient
+from backend.doc_chunks import build_doc_index, find_section_by_id
 from backend.config import get_settings
 from models import api_config
 from shared.types import LoadingStatus
@@ -354,3 +356,65 @@ def get_lumi_doc(
         doc=doc_json,
         summaries=summaries_json,
     )
+
+
+@router.get("/lumi-doc-index/{arxiv_id}/{version}", response_model=LumiDocResponse)
+def get_lumi_doc_index(
+    arxiv_id: str,
+    version: str,
+    db: DbClient = Depends(get_db_client),
+    storage: StorageClient = Depends(get_storage_client),
+):
+    doc_tuple = db.get_lumi_doc(arxiv_id, version)
+    if not doc_tuple:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc_json, summaries_json = doc_tuple
+
+    base_path = f"papers/{arxiv_id}/v{version}"
+    index_path = f"{base_path}/lumi_doc_index.json"
+    try:
+        doc_index = json.loads(storage.get_bytes(index_path))
+    except Exception:
+        doc_index = build_doc_index(doc_json)
+
+    return LumiDocResponse(
+        arxiv_id=arxiv_id,
+        version=version,
+        doc=doc_index,
+        summaries=summaries_json,
+    )
+
+
+@router.get(
+    "/lumi-doc-section/{arxiv_id}/{version}/{section_id}",
+    response_model=LumiDocSectionResponse,
+)
+def get_lumi_doc_section(
+    arxiv_id: str,
+    version: str,
+    section_id: str,
+    db: DbClient = Depends(get_db_client),
+    storage: StorageClient = Depends(get_storage_client),
+):
+    base_path = f"papers/{arxiv_id}/v{version}"
+    section_path = f"{base_path}/sections/{section_id}.json"
+    try:
+        section = json.loads(storage.get_bytes(section_path))
+        return LumiDocSectionResponse(
+            arxiv_id=arxiv_id,
+            version=version,
+            section=section,
+        )
+    except Exception:
+        doc_tuple = db.get_lumi_doc(arxiv_id, version)
+        if not doc_tuple:
+            raise HTTPException(status_code=404, detail="Document not found")
+        doc_json, _ = doc_tuple
+        section = find_section_by_id(doc_json.get("sections") or [], section_id)
+        if not section:
+            raise HTTPException(status_code=404, detail="Section not found")
+        return LumiDocSectionResponse(
+            arxiv_id=arxiv_id,
+            version=version,
+            section=section,
+        )

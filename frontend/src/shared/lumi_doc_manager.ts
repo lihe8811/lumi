@@ -138,6 +138,13 @@ export class LumiDocManager {
     }
   }
 
+  appendSections(sections: LumiSection[]) {
+    sections.forEach((section) => {
+      this.innerLumiDoc.sections.push(section);
+      this.addSectionSpans(section);
+    });
+  }
+
   private addListContentSpans(listContent: ListContent, section?: LumiSection) {
     if (listContent.listItems) {
       listContent.listItems.forEach((item) => {

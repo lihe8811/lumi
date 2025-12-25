@@ -250,6 +250,7 @@ export interface LumiDoc {
   markdown: string;
   abstract: LumiAbstract;
   sections: LumiSection[];
+  sectionOutline?: LumiSection[];
   concepts: LumiConcept[];
   summaries?: LumiSummaries;
   metadata?: ArxivMetadata;

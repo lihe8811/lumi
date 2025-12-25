@@ -108,6 +108,28 @@ export class CollapseManager {
     });
   }
 
+  registerSections(sections: LumiSection[]) {
+    const isCollapsed = isViewportSmall()
+      ? INITIAL_MOBILE_SUMMARY_COLLAPSE_STATE
+      : INITIAL_DESKTOP_SUMMARY_COLLAPSE_STATE;
+
+    const registerSection = (section: LumiSection) => {
+      section.contents.forEach((content) => {
+        this.mobileSummaryCollapseState.set(content.id, isCollapsed);
+      });
+
+      if (section.subSections) {
+        section.subSections.forEach((subSection) => {
+          registerSection(subSection);
+        });
+      }
+    };
+
+    sections.forEach((section) => {
+      registerSection(section);
+    });
+  }
+
   // Sidebar methods
   setSidebarTabSelection(tab: string) {
     this.sidebarTabSelection = tab;

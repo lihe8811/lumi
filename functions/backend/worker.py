@@ -17,6 +17,7 @@ from typing import Optional
 from backend.db import DbClient, JobRecord
 from backend.dependencies import get_db_client, get_queue_client, get_storage_client
 from backend.storage import InMemoryStorageClient
+from backend.doc_chunks import build_doc_index, iter_section_chunks
 from backend.config import get_settings
 from import_pipeline import fetch_utils, import_pipeline, summaries
 from models import extract_concepts as extract_concepts_util
@@ -223,8 +224,19 @@ def process_job(job: JobRecord, db: DbClient) -> None:
 
             base_path = f"papers/{job.arxiv_id}/v{metadata.version}"
             doc_path = f"{base_path}/lumi_doc.json"
+            doc_index_path = f"{base_path}/lumi_doc_index.json"
+            sections_path = f"{base_path}/sections"
             summaries_path = f"{base_path}/summaries.json"
             storage.upload_json(doc_path, doc_json)
+            doc_index = build_doc_index(doc_json)
+            storage.upload_json(doc_index_path, doc_index)
+            for section in iter_section_chunks(doc_json):
+                section_id = section.get("id")
+                if not section_id:
+                    continue
+                storage.upload_json(
+                    f"{sections_path}/{section_id}.json", section
+                )
             storage.upload_json(summaries_path, summaries_json)
             logger.info(
                 f"[{job.job_id}] Uploaded lumi_doc to {doc_path} and summaries to {summaries_path}"
@@ -332,9 +344,20 @@ def process_job(job: JobRecord, db: DbClient) -> None:
 
         base_path = f"papers/{job.arxiv_id}/v{metadata.version}"
         doc_path = f"{base_path}/lumi_doc.json"
+        doc_index_path = f"{base_path}/lumi_doc_index.json"
+        sections_path = f"{base_path}/sections"
         summaries_path = f"{base_path}/summaries.json"
         try:
             storage.upload_json(doc_path, doc_json)
+            doc_index = build_doc_index(doc_json)
+            storage.upload_json(doc_index_path, doc_index)
+            for section in iter_section_chunks(doc_json):
+                section_id = section.get("id")
+                if not section_id:
+                    continue
+                storage.upload_json(
+                    f"{sections_path}/{section_id}.json", section
+                )
             storage.upload_json(summaries_path, summaries_json)
             logger.info(
                 f"[{job.job_id}] Uploaded lumi_doc to {doc_path} and summaries to {summaries_path}"

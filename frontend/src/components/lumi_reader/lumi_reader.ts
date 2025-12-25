@@ -33,6 +33,7 @@ import { DocumentStateService } from "../../services/document_state.service";
 import { SnackbarService } from "../../services/snackbar.service";
 import {
   LumiDoc,
+  LumiSection,
   LoadingStatus,
   LumiReference,
   LumiFootnote,
@@ -124,8 +125,13 @@ export class LumiReader extends LightMobxLitElement {
   @state() metadataNotFound? = false;
 
   @state() hoveredSpanId: string | null = null;
+  @state() hasMoreSections = false;
+  @state() isLoadingMoreSections = false;
 
   private mobileSmartHighlightContainerRef = createRef<HTMLElement>();
+  private sectionOrder: string[] = [];
+  private loadedSectionCount = 0;
+  private readonly sectionBatchSize = 3;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -220,12 +226,27 @@ export class LumiReader extends LightMobxLitElement {
 
   private async tryLoadDoc(metadata: ArxivMetadata): Promise<boolean> {
     try {
-      const resp = await this.backendApiService.getLumiDoc(
+      const resp = await this.backendApiService.getLumiDocIndex(
         this.documentId,
         metadata.version
       );
       const lumiDoc = resp.doc as LumiDoc;
       lumiDoc.summaries = resp.summaries;
+      const outline = lumiDoc.sectionOutline ?? lumiDoc.sections ?? [];
+      if (!lumiDoc.sectionOutline) {
+        lumiDoc.sectionOutline = outline;
+      }
+      this.sectionOrder = outline.map((section) => section.id);
+      lumiDoc.sections = [];
+      const initialSections = await this.fetchSections(
+        metadata.version,
+        this.sectionOrder.slice(0, this.sectionBatchSize)
+      );
+      lumiDoc.sections = initialSections;
+      this.loadedSectionCount = initialSections.length;
+      this.isLoadingMoreSections = false;
+      this.hasMoreSections =
+        this.loadedSectionCount < this.sectionOrder.length;
       this.documentStateService.setDocument(lumiDoc);
       this.setLoadingStatus(LoadingStatus.SUCCESS);
       this.metadata = lumiDoc.metadata;
@@ -234,9 +255,80 @@ export class LumiReader extends LightMobxLitElement {
       }
       return true;
     } catch (e) {
-      return false;
+      try {
+        const resp = await this.backendApiService.getLumiDoc(
+          this.documentId,
+          metadata.version
+        );
+        const lumiDoc = resp.doc as LumiDoc;
+        lumiDoc.summaries = resp.summaries;
+        this.sectionOrder = [];
+        this.loadedSectionCount = 0;
+        this.hasMoreSections = false;
+        this.isLoadingMoreSections = false;
+        this.documentStateService.setDocument(lumiDoc);
+        this.setLoadingStatus(LoadingStatus.SUCCESS);
+        this.metadata = lumiDoc.metadata;
+        if (!this.historyService.personalSummaries.has(this.documentId)) {
+          this.fetchPersonalSummary();
+        }
+        return true;
+      } catch (fallbackError) {
+        return false;
+      }
     }
   }
+
+  private async fetchSections(
+    version: string,
+    sectionIds: string[]
+  ): Promise<LumiSection[]> {
+    if (!sectionIds.length) {
+      return [];
+    }
+    const responses = await Promise.all(
+      sectionIds.map((sectionId) =>
+        this.backendApiService.getLumiDocSection(
+          this.documentId,
+          version,
+          sectionId
+        )
+      )
+    );
+    return responses.map((resp) => resp.section as LumiSection);
+  }
+
+  private readonly loadMoreSections = async () => {
+    if (
+      this.isLoadingMoreSections ||
+      !this.hasMoreSections ||
+      !this.metadata?.version
+    ) {
+      return;
+    }
+
+    this.isLoadingMoreSections = true;
+    try {
+      const nextIds = this.sectionOrder.slice(
+        this.loadedSectionCount,
+        this.loadedSectionCount + this.sectionBatchSize
+      );
+      const sections = await this.fetchSections(
+        this.metadata.version,
+        nextIds
+      );
+      this.documentStateService.appendSections(sections);
+      this.loadedSectionCount += sections.length;
+      this.hasMoreSections =
+        this.loadedSectionCount < this.sectionOrder.length;
+    } catch (e) {
+      console.error("Error loading more sections:", e);
+      this.snackbarService.show("Error loading more sections.");
+      this.hasMoreSections = false;
+    } finally {
+      this.isLoadingMoreSections = false;
+    }
+  };
 
   private async startImportAndPoll() {
     try {
@@ -652,6 +744,10 @@ export class LumiReader extends LightMobxLitElement {
           .onSpanSummaryMouseEnter=${this.onSpanSummaryMouseEnter.bind(this)}
           .onSpanSummaryMouseLeave=${this.onSpanSummaryMouseLeave.bind(this)}
           .hoveredSpanId=${this.hoveredSpanId}
+          .hasMoreSections=${this.hasMoreSections}
+          .isLoadingMore=${this.isLoadingMoreSections}
+          .onLoadMoreSections=${this.loadMoreSections}
+          .docVersion=${this.documentStateService.docVersion}
         ></lumi-doc>
       </div>
       ${this.renderMobileSmartHighlightMenu()}

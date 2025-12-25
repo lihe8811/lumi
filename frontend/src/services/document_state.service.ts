@@ -16,7 +16,7 @@
  */
 
 import { Service } from "./service";
-import { Highlight, HighlightColor, LumiDoc } from "../shared/lumi_doc";
+import { Highlight, HighlightColor, LumiDoc, LumiSection } from "../shared/lumi_doc";
 import { ScrollState } from "../contexts/scroll_context";
 import { HighlightManager } from "../shared/highlight_manager";
 import { CollapseManager } from "../shared/collapse_manager";
@@ -44,12 +44,18 @@ export class DocumentStateService extends Service {
   highlightManager?: HighlightManager;
   collapseManager?: CollapseManager;
   lumiDocManager?: LumiDocManager;
+  docVersion = 0;
 
   private scrollState?: ScrollState;
 
   constructor(private readonly sp: ServiceProvider) {
     super();
-    makeObservable(this);
+    makeObservable(this, {
+      docVersion: observable,
+      appendSections: action,
+      setDocument: action,
+      clearDocument: action,
+    });
   }
 
   setDocument(lumiDoc: LumiDoc) {
@@ -58,12 +64,24 @@ export class DocumentStateService extends Service {
     this.lumiDocManager = new LumiDocManager(lumiDoc);
     this.collapseManager = new CollapseManager(this.lumiDocManager);
     this.collapseManager.initialize();
+    this.docVersion += 1;
   }
 
   clearDocument() {
     this.highlightManager = undefined;
     this.lumiDocManager = undefined;
     this.collapseManager = undefined;
+    this.docVersion += 1;
+  }
+
+  appendSections(sections: LumiSection[]) {
+    if (!this.lumiDocManager || !this.collapseManager || !sections.length) {
+      return;
+    }
+
+    this.lumiDocManager.appendSections(sections);
+    this.collapseManager.registerSections(sections);
+    this.docVersion += 1;
   }
 
   setScrollState(scrollState: ScrollState) {

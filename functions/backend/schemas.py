@@ -88,6 +88,12 @@ class LumiDocResponse(BaseModel):
     summaries: dict
 
 
+class LumiDocSectionResponse(BaseModel):
+    arxiv_id: str
+    version: str
+    section: dict
+
+
 class PaperSummary(BaseModel):
     arxiv_id: str
     version: str

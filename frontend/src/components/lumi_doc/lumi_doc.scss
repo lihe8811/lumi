@@ -102,3 +102,10 @@ h6 {
 .arxiv-link {
   text-decoration: none;
 }
+
+.section-load-more {
+  color: var(--md-sys-color-on-surface-variant);
+  display: flex;
+  justify-content: center;
+  padding: common.$spacing-large 0;
+}

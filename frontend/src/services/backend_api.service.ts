@@ -42,6 +42,12 @@ export interface LumiDocResponse {
   summaries: any;
 }
 
+export interface LumiDocSectionResponse {
+  arxiv_id: string;
+  version: string;
+  section: any;
+}
+
 export interface ListPapersResponse {
   papers: { arxiv_id: string; version: string; metadata?: any }[];
 }
@@ -131,6 +137,24 @@ export class BackendApiService extends Service {
 
   async getLumiDoc(arxivId: string, version: string): Promise<LumiDocResponse> {
     return this.request(`/api/lumi-doc/${arxivId}/${version}`, "GET");
+  }
+
+  async getLumiDocIndex(
+    arxivId: string,
+    version: string
+  ): Promise<LumiDocResponse> {
+    return this.request(`/api/lumi-doc-index/${arxivId}/${version}`, "GET");
+  }
+
+  async getLumiDocSection(
+    arxivId: string,
+    version: string,
+    sectionId: string
+  ): Promise<LumiDocSectionResponse> {
+    return this.request(
+      `/api/lumi-doc-section/${arxivId}/${version}/${sectionId}`,
+      "GET"
+    );
   }
 
   async getLumiResponse(

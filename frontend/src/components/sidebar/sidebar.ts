@@ -161,11 +161,13 @@ export class LumiSidebar extends LightMobxLitElement {
   }
 
   private renderToc() {
+    const lumiDoc = this.documentStateService.lumiDocManager?.lumiDoc;
+    const tocSections = lumiDoc?.sectionOutline ?? lumiDoc?.sections ?? [];
+
     return html`
       <div class="toc-container" slot=${SIDEBAR_TABS.TOC}>
         <table-of-contents
-          .sections=${this.documentStateService.lumiDocManager?.lumiDoc
-            .sections}
+          .sections=${tocSections}
           .lumiSummariesMap=${this.documentStateService.lumiDocManager
             ?.summaryMaps}
           .onSectionClicked=${(sectionId: string) => {

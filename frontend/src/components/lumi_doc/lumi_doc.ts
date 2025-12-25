@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { HighlightSelection } from "../../shared/selection_utils";
 
@@ -75,9 +75,15 @@ export class LumiDocViz extends LightMobxLitElement {
   @property() onSpanSummaryMouseEnter: () => void = () => {};
   @property() onSpanSummaryMouseLeave: () => void = () => {};
   @property() hoveredSpanId: string | null = null;
+  @property({ type: Boolean }) hasMoreSections = false;
+  @property({ type: Boolean }) isLoadingMore = false;
+  @property() onLoadMoreSections: () => void = () => {};
+  @property({ type: Number }) docVersion = 0;
 
   private intersectionObserver?: IntersectionObserver;
+  private sectionObserver?: IntersectionObserver;
   private scrollRef: Ref<HTMLElement> = createRef<HTMLElement>();
+  private sectionSentinelRef: Ref<HTMLElement> = createRef<HTMLElement>();
   private scrollContainer?: HTMLElement;
 
   get lumiDoc() {
@@ -114,6 +120,21 @@ export class LumiDocViz extends LightMobxLitElement {
       },
       { root: scrollableElement }
     );
+
+    this.sectionObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (
+            entry.isIntersecting &&
+            this.hasMoreSections &&
+            !this.isLoadingMore
+          ) {
+            this.onLoadMoreSections();
+          }
+        });
+      },
+      { root: scrollableElement }
+    );
   }
 
   override connectedCallback(): void {
@@ -128,6 +149,7 @@ export class LumiDocViz extends LightMobxLitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.intersectionObserver?.disconnect();
+    this.sectionObserver?.disconnect();
     if (this.scrollContainer && this.scrollContainer !== this.scrollRef.value) {
       this.scrollContainer.removeEventListener("scroll", this.onScroll);
     }
@@ -137,7 +159,15 @@ export class LumiDocViz extends LightMobxLitElement {
     );
   }
 
+  override updated() {
+    this.sectionObserver?.disconnect();
+    if (this.sectionObserver && this.sectionSentinelRef.value) {
+      this.sectionObserver.observe(this.sectionSentinelRef.value);
+    }
+  }
+
   override render() {
+    void this.docVersion;
     const publishedTimestamp =
       this.lumiDocManager.lumiDoc.metadata?.publishedTimestamp;
     const date = publishedTimestamp
@@ -215,25 +245,34 @@ export class LumiDocViz extends LightMobxLitElement {
             >
             </lumi-section>`;
           })}
-          <lumi-references
-            .references=${this.lumiDoc.references}
-            .isCollapsed=${this.collapseManager.areReferencesCollapsed}
-            .onCollapseChange=${(isCollapsed: boolean) => {
-              this.collapseManager.setReferencesCollapsed(isCollapsed);
-            }}
-            .highlightManager=${this.highlightManager}
-            .answerHighlightManager=${this.answerHighlightManager}
-            .onAnswerHighlightClick=${this.onAnswerHighlightClick}
-          >
-          </lumi-references>
-          <lumi-footnotes
-            .footnotes=${this.lumiDoc.footnotes || []}
-            .isCollapsed=${this.collapseManager.areFootnotesCollapsed}
-            .onCollapseChange=${(isCollapsed: boolean) => {
-              this.collapseManager.setFootnotesCollapsed(isCollapsed);
-            }}
-          >
-          </lumi-footnotes>
+          ${this.hasMoreSections
+            ? html`<div class="section-load-more" ${ref(
+                this.sectionSentinelRef
+              )}>
+                ${this.isLoadingMore ? "Loading more..." : ""}
+              </div>`
+            : nothing}
+          ${this.hasMoreSections
+            ? nothing
+            : html`<lumi-references
+                .references=${this.lumiDoc.references}
+                .isCollapsed=${this.collapseManager.areReferencesCollapsed}
+                .onCollapseChange=${(isCollapsed: boolean) => {
+                  this.collapseManager.setReferencesCollapsed(isCollapsed);
+                }}
+                .highlightManager=${this.highlightManager}
+                .answerHighlightManager=${this.answerHighlightManager}
+                .onAnswerHighlightClick=${this.onAnswerHighlightClick}
+              >
+              </lumi-references>
+              <lumi-footnotes
+                .footnotes=${this.lumiDoc.footnotes || []}
+                .isCollapsed=${this.collapseManager.areFootnotesCollapsed}
+                .onCollapseChange=${(isCollapsed: boolean) => {
+                  this.collapseManager.setFootnotesCollapsed(isCollapsed);
+                }}
+              >
+              </lumi-footnotes>`}
         </div>
       </div>
     `;

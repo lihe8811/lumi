@@ -201,6 +201,7 @@ class LumiDoc:
 
     sections: List[LumiSection]
     concepts: List[LumiConcept]
+    section_outline: Optional[List[LumiSection]] = None
     abstract: Optional[LumiAbstract] = None
     references: Optional[List[LumiReference]] = None
     footnotes: Optional[List[LumiFootnote]] = None

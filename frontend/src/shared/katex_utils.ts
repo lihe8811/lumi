@@ -20,6 +20,8 @@ const UNSUPPORTED_KATEX_COMMANDS: RegExp[] = [
   /\\tag\{[^}]*\}/g,
   /\\notag\b/g,
   /\\nonumber\b/g,
+  /\\eqno\b(\s*\([^)]*\))?/g,
+  /\\leqno\b(\s*\([^)]*\))?/g,
 ];
 
 export function sanitizeLatexForKatex(input: string): string {
