@@ -51,6 +51,28 @@ cd functions
 python -m unittest discover backend/tests
 ```
 
+## Local import scripts
+Use these scripts to run the import pipeline directly (useful for debugging).
+
+Single paper:
+```bash
+python3 scripts/script_local_import.py <arxiv_id> <version> [--debug] [--skip_summaries] [--existing_output PATH]
+```
+
+Batch import (edit the paper list in the script):
+```bash
+python3 scripts/import_papers_local.py [--debug] [--skip_summaries]
+```
+
+## Local PDF upload (API)
+You can upload a PDF directly via the API and track the job status:
+```bash
+curl -X POST http://localhost:4000/api/request_local_pdf_import \
+  -F "file=@/path/to/paper.pdf"
+```
+
+Local PDF uploads enqueue a worker job; make sure the worker is running to process them.
+
 ## Notes on refactor
 - Storage is abstracted for Tencent COS (S3) with an in-memory fallback; GCS compatibility remains for legacy flows.
 - Database is abstracted; a real `PostgresDbClient` still needs to be implemented (SQLAlchemy models/migrations). In-memory DB supports tests and local runs.
