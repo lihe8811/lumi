@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { makeObservable, observable, ObservableMap } from "mobx";
+import { action, makeObservable, observable, ObservableMap } from "mobx";
 import { ArxivCollection } from "../shared/lumi_collection";
 import { ArxivMetadata, FeaturedImage } from "../shared/lumi_doc";
 
@@ -33,6 +33,7 @@ export class HomeService extends Service {
       hasLoadedCollections: observable,
       isLoadingCollections: observable,
       showUploadDialog: observable,
+      setShowUploadDialog: action,
     });
   }
 

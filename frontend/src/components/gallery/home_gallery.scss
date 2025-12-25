@@ -59,6 +59,22 @@ h1 {
   }
 }
 
+.paper-upload {
+  @include common.flex-row-align-center;
+  gap: common.$spacing-medium;
+}
+
+.file-input {
+  display: none;
+}
+
+.file-name {
+  @include common.overflow-ellipsis;
+  color: var(--md-sys-color-on-surface-higher);
+  font-size: 12px;
+  max-width: 260px;
+}
+
 .loading-section {
   @include common.flex-column;
   @include typescale.body-small;

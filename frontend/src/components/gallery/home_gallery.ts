@@ -18,12 +18,14 @@
 import "../../pair-components/textarea";
 import "../../pair-components/icon";
 import "../../pair-components/icon_button";
+import "../../pair-components/button";
 import "../lumi_image/lumi_image";
 
 import { MobxLitElement } from "@adobe/lit-mobx";
 import { CSSResultGroup, html, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
+import { createRef, ref, Ref } from "lit/directives/ref.js";
 
 import { core } from "../../core/core";
 import { HomeService } from "../../services/home.service";
@@ -46,7 +48,7 @@ import { ArxivCollection } from "../../shared/lumi_collection";
 import { extractArxivId } from "../../shared/string_utils";
 
 import { styles } from "./home_gallery.scss";
-import { makeObservable, observable, ObservableMap, toJS } from "mobx";
+import { makeObservable, observable, ObservableMap, runInAction, toJS } from "mobx";
 import { PaperData } from "../../shared/types_local_storage";
 import { MAX_IMPORT_URL_LENGTH, DEFAULT_COVER_IMAGE_PATH } from "../../shared/constants";
 import { GalleryView } from "../../shared/types";
@@ -85,6 +87,9 @@ export class HomeGallery extends MobxLitElement {
   // Whether the last imported paper is still loading metadata
   // (if true, this blocks importing another paper)
   @state() private isLoadingMetadata = false;
+  @state() private localFileName = "";
+
+  private fileInputRef: Ref<HTMLInputElement> = createRef();
 
   private loadingStatusMap = new ObservableMap<string, LoadingStatus>();
   @observable.shallow private pendingJobs = new ObservableMap<string, string>();
@@ -117,18 +122,20 @@ export class HomeGallery extends MobxLitElement {
   private async loadExistingPapers() {
     try {
       const resp = await this.backendApiService.listPapers();
-      resp.papers.forEach((paper) => {
-        const metadata = paper.metadata as ArxivMetadata | undefined;
-        if (metadata && !metadata.paperId) {
-          metadata.paperId = paper.arxiv_id;
-        }
-        if (metadata && !metadata.version) {
-          metadata.version = paper.version;
-        }
-        if (metadata) {
-          this.historyService.addPaper(paper.arxiv_id, metadata);
-          this.loadingStatusMap.set(paper.arxiv_id, LoadingStatus.SUCCESS);
-        }
+      runInAction(() => {
+        resp.papers.forEach((paper) => {
+          const metadata = paper.metadata as ArxivMetadata | undefined;
+          if (metadata && !metadata.paperId) {
+            metadata.paperId = paper.arxiv_id;
+          }
+          if (metadata && !metadata.version) {
+            metadata.version = paper.version;
+          }
+          if (metadata) {
+            this.historyService.addPaper(paper.arxiv_id, metadata);
+            this.loadingStatusMap.set(paper.arxiv_id, LoadingStatus.SUCCESS);
+          }
+        });
       });
     } catch (e) {
       console.error("Failed to load existing papers:", e);
@@ -177,11 +184,53 @@ export class HomeGallery extends MobxLitElement {
     // Reset paper input
     this.paperInput = "";
 
-    if (metadata) {
-      this.historyService.addLoadingPaper(paperId, metadata);
+    runInAction(() => {
+      if (metadata) {
+        this.historyService.addLoadingPaper(paperId, metadata);
+      }
+      this.pendingJobs.set(paperId, jobId);
+      this.loadingStatusMap.set(paperId, LoadingStatus.WAITING);
+    });
+    this.pollJob(paperId, jobId);
+  }
+
+  private async loadLocalPdf(file: File) {
+    this.isLoadingMetadata = true;
+    let jobId: string;
+    let paperId: string;
+    let version = "1";
+    try {
+      const resp = await this.backendApiService.requestLocalPdfImport(
+        file,
+        file.name
+      );
+      jobId = resp.job_id;
+      paperId = resp.arxiv_id;
+      version = resp.version ?? version;
+    } catch (error) {
+      this.snackbarService.show(`Error: ${(error as Error).message}`);
+      this.isLoadingMetadata = false;
+      return;
+    } finally {
+      this.isLoadingMetadata = false;
     }
-    this.pendingJobs.set(paperId, jobId);
-    this.loadingStatusMap.set(paperId, LoadingStatus.WAITING);
+
+    const now = new Date().toISOString();
+    const metadata: ArxivMetadata = {
+      paperId,
+      version,
+      authors: ["Local Upload"],
+      title: file.name,
+      summary: "",
+      updatedTimestamp: now,
+      publishedTimestamp: now,
+    };
+
+    runInAction(() => {
+      this.historyService.addLoadingPaper(paperId, metadata);
+      this.pendingJobs.set(paperId, jobId);
+      this.loadingStatusMap.set(paperId, LoadingStatus.WAITING);
+    });
     this.pollJob(paperId, jobId);
   }
 
@@ -190,7 +239,9 @@ export class HomeGallery extends MobxLitElement {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const status = await this.backendApiService.jobStatus(jobId);
-        this.loadingStatusMap.set(paperId, status.status as LoadingStatus);
+        runInAction(() => {
+          this.loadingStatusMap.set(paperId, status.status as LoadingStatus);
+        });
         if (status.status === LoadingStatus.SUCCESS) {
           const version = status.version ?? "1";
           const docResp = await this.backendApiService.getLumiDoc(
@@ -199,9 +250,14 @@ export class HomeGallery extends MobxLitElement {
           );
           const lumiDoc = docResp.doc as LumiDoc;
           lumiDoc.summaries = docResp.summaries;
-          this.historyService.addPaper(paperId, lumiDoc.metadata as ArxivMetadata);
-      // Metadata already available via backend; no extra load.
-          this.pendingJobs.delete(paperId);
+          runInAction(() => {
+            this.historyService.addPaper(
+              paperId,
+              lumiDoc.metadata as ArxivMetadata
+            );
+            // Metadata already available via backend; no extra load.
+            this.pendingJobs.delete(paperId);
+          });
           this.snackbarService.show("Document loaded.");
           return;
         }
@@ -211,8 +267,10 @@ export class HomeGallery extends MobxLitElement {
           ) ||
           status.status === LoadingStatus.TIMEOUT
         ) {
-          this.historyService.deletePaper(paperId);
-          this.pendingJobs.delete(paperId);
+          runInAction(() => {
+            this.historyService.deletePaper(paperId);
+            this.pendingJobs.delete(paperId);
+          });
           this.snackbarService.show(`Error loading document: ${status.status}`);
           return;
         }
@@ -221,7 +279,9 @@ export class HomeGallery extends MobxLitElement {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    this.pendingJobs.delete(paperId);
+    runInAction(() => {
+      this.pendingJobs.delete(paperId);
+    });
     this.snackbarService.show("Timed out waiting for document import.");
   }
 
@@ -263,6 +323,25 @@ export class HomeGallery extends MobxLitElement {
       close();
     };
 
+    const triggerFilePicker = () => {
+      this.fileInputRef.value?.click();
+    };
+
+    const handleFileChange = (event: Event) => {
+      const input = event.target as HTMLInputElement | null;
+      const file = input?.files?.[0];
+      if (!file) {
+        return;
+      }
+      this.localFileName = file.name;
+      this.routerService.navigate(Pages.HOME);
+      this.loadLocalPdf(file);
+      if (input) {
+        input.value = "";
+      }
+      close();
+    };
+
     return html`
       <pr-dialog
         .showDialog=${this.homeService.showUploadDialog}
@@ -297,6 +376,25 @@ export class HomeGallery extends MobxLitElement {
               ?disabled=${this.isLoadingMetadata || !this.paperInput}
             >
             </pr-icon-button>
+          </div>
+          <div class="paper-upload">
+            <input
+              class="file-input"
+              type="file"
+              accept="application/pdf"
+              ${ref(this.fileInputRef)}
+              @change=${handleFileChange}
+            />
+            <pr-button
+              variant="tonal"
+              ?disabled=${this.isLoadingMetadata}
+              @click=${triggerFilePicker}
+            >
+              Upload PDF
+            </pr-button>
+            ${this.localFileName
+              ? html`<span class="file-name">${this.localFileName}</span>`
+              : nothing}
           </div>
         </div>
       </pr-dialog>
