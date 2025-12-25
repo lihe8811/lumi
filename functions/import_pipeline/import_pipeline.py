@@ -211,6 +211,78 @@ def import_arxiv_latex_and_pdf(
     return lumi_doc, image_path
 
 
+def import_pdf_bytes(
+    pdf_data: bytes,
+    file_id: str,
+    concepts: List[LumiConcept],
+    metadata: ArxivMetadata,
+    debug: bool = False,
+    existing_model_output_file: str = "",
+    run_locally: bool = False,
+    storage_client=None,
+) -> Tuple[LumiDoc, str]:
+    """
+    Imports and processes a local PDF into a LumiDoc.
+
+    Args:
+        pdf_data (bytes): The PDF bytes to process.
+        file_id (str): Storage file id prefix (e.g., "<paper_id>/v<version>").
+        concepts (List[LumiConcept]): A list of concepts to identify in the text.
+        metadata (ArxivMetadata): Metadata for the paper.
+        debug (bool): If true, writes debug output markdown to local file.
+        existing_model_output_file (str): If passed, used in place of generating new model output.
+        run_locally (bool): If true, saves files locally instead of cloud.
+        storage_client: Optional storage client for image uploads.
+
+    Returns:
+        Tuple[LumiDoc, str]: The processed document and the first image storage path in the document.
+    """
+    latex_string = ""
+    image_path = ""
+
+    if existing_model_output_file:
+        with open(existing_model_output_file, "r") as file:
+            model_output = file.read()
+    else:
+        start_time = time.time()
+        logger.info("Import pipeline: calling Gemini format_pdf_with_latex for %s", file_id)
+        model_output = gemini.format_pdf_with_latex(
+            pdf_data=pdf_data, latex_string=latex_string, concepts=concepts
+        )
+        logger.info(
+            "Import pipeline: Gemini format_pdf_with_latex completed in %.2fs for %s",
+            time.time() - start_time,
+            file_id,
+        )
+
+    if debug:
+        safe_file_id = file_id.replace("/", "_")
+        model_output_path = f"debug/markdown_output_{safe_file_id}.md"
+        print(f"🍭 Debug mode - wrote markdown to: {model_output_path}")
+        with open(model_output_path, "w+") as file:
+            file.write(model_output)
+
+    lumi_doc = convert_model_output_to_lumi_doc(
+        model_output_string=model_output,
+        concepts=concepts,
+        file_id=file_id,
+    )
+    lumi_doc.metadata = metadata
+
+    all_image_contents = _collect_image_contents(lumi_doc)
+    if all_image_contents:
+        extracted_images = image_utils.extract_images_from_pdf_xobjects(
+            pdf_data,
+            image_contents=all_image_contents,
+            run_locally=run_locally,
+            storage_client=storage_client,
+        )
+        if extracted_images:
+            image_path = extracted_images[0].storage_path
+
+    return lumi_doc, image_path
+
+
 def _collect_image_contents(doc: LumiDoc) -> List[ImageContent]:
     """Recursively finds and collects all ImageContent objects in a LumiDoc."""
     image_contents = []

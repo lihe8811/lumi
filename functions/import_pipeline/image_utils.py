@@ -20,12 +20,14 @@ import re
 import shutil
 import warnings
 import tempfile
+import io
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Protocol
 from typing import Tuple
 import logging
 from PIL import Image
+from pypdf import PdfReader
 import pypdfium2 as pdfium
 
 # Legacy GCS support removed; prefer COS/InMemory.
@@ -419,5 +421,92 @@ def extract_images_from_pdf_bytes(
             except Exception as e:
                 warnings.warn(f"Could not process fallback PDF image: {e}")
                 continue
+
+    return processed_image_metadata
+
+
+def extract_images_from_pdf_xobjects(
+    pdf_bytes: bytes,
+    image_contents: List[ImageContent],
+    run_locally: bool = False,
+    storage_client: StorageClient | None = None,
+) -> List[ImageMetadata]:
+    """
+    Extracts embedded images (XObjects) from a PDF and maps them to ImageContent entries.
+    """
+    processed_image_metadata: List[ImageMetadata] = []
+    if not pdf_bytes or not image_contents:
+        return processed_image_metadata
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    image_index = 0
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for page in reader.pages:
+            try:
+                images = getattr(page, "images", [])
+            except Exception:
+                images = []
+
+            for image in images:
+                if image_index >= len(image_contents):
+                    break
+
+                image_content = image_contents[image_index]
+                image_index += 1
+
+                image_bytes = getattr(image, "data", None)
+                image_ext = getattr(image, "extension", None) or "png"
+                if not image_bytes:
+                    continue
+
+                temp_path = os.path.join(
+                    temp_dir, f"pdf_image_{image_index}.{image_ext}"
+                )
+                with open(temp_path, "wb") as f:
+                    f.write(image_bytes)
+
+                path = Path(image_content.storage_path)
+                image_content.storage_path = str(path.with_suffix(f".{image_ext}"))
+
+                try:
+                    with Image.open(temp_path) as img:
+                        width, height = float(img.width), float(img.height)
+
+                    if run_locally:
+                        destination_full_path = os.path.join(
+                            LOCAL_IMAGE_BUCKET_BASE, image_content.storage_path
+                        )
+                        os.makedirs(
+                            os.path.dirname(destination_full_path), exist_ok=True
+                        )
+                        shutil.copy(temp_path, destination_full_path)
+                        logger.info(
+                            "Saved embedded PDF image locally to %s",
+                            destination_full_path,
+                        )
+                    else:
+                        client = storage_client or get_cloud_storage_client()
+                        client.upload_file(temp_path, image_content.storage_path)
+                        logger.info(
+                            "Uploaded embedded PDF image to storage at %s",
+                            image_content.storage_path,
+                        )
+
+                    image_content.width = width
+                    image_content.height = height
+                    processed_image_metadata.append(
+                        ImageMetadata(
+                            storage_path=image_content.storage_path,
+                            width=width,
+                            height=height,
+                        )
+                    )
+                except Exception as e:
+                    warnings.warn(f"Could not process embedded PDF image: {e}")
+                    continue
+
+            if image_index >= len(image_contents):
+                break
 
     return processed_image_metadata
