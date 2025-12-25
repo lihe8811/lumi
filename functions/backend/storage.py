@@ -27,6 +27,9 @@ class StorageClient(Protocol):
     def upload_file(self, src_path: str, dest_path: str) -> None:
         ...
 
+    def get_bytes(self, path: str) -> bytes:
+        ...
+
 
 @dataclass
 class InMemoryStorageClient:
@@ -52,6 +55,14 @@ class InMemoryStorageClient:
     def upload_file(self, src_path: str, dest_path: str) -> None:
         with open(src_path, "rb") as f:
             self.stored_objects[dest_path] = f.read()
+
+    def get_bytes(self, path: str) -> bytes:
+        stored = self.stored_objects.get(path)
+        if stored is None:
+            raise FileNotFoundError(path)
+        if isinstance(stored, bytes):
+            return stored
+        return json.dumps(stored, default=str).encode("utf-8")
 
 
 @dataclass
@@ -111,3 +122,7 @@ class CosStorageClient:
 
     def upload_file(self, src_path: str, dest_path: str) -> None:
         self._client.upload_file(src_path, self.bucket, dest_path)
+
+    def get_bytes(self, path: str) -> bytes:
+        response = self._client.get_object(Bucket=self.bucket, Key=path)
+        return response["Body"].read()

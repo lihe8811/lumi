@@ -35,6 +35,9 @@ class DbClient(Protocol):
     def get_metadata(self, arxiv_id: str) -> Optional[dict]:
         ...
 
+    def list_metadata_ids(self, prefix: str) -> list[str]:
+        ...
+
     def save_feedback(self, feedback: "FeedbackRecord") -> None:
         ...
 
@@ -143,6 +146,9 @@ class InMemoryDbClient:
 
     def get_metadata(self, arxiv_id: str) -> Optional[dict]:
         return self.metadata.get(arxiv_id)
+
+    def list_metadata_ids(self, prefix: str) -> list[str]:
+        return [key for key in self.metadata.keys() if key.startswith(prefix)]
 
     def save_feedback(self, feedback: FeedbackRecord) -> None:
         key = uuid.uuid4().hex
@@ -397,6 +403,15 @@ class PostgresDbClient:
         with self.Session() as session:
             row = session.get(MetadataRow, arxiv_id)
             return row.data if row else None
+
+    def list_metadata_ids(self, prefix: str) -> list[str]:
+        with self.Session() as session:
+            rows = (
+                session.query(MetadataRow.arxiv_id)
+                .filter(MetadataRow.arxiv_id.like(f"{prefix}%"))
+                .all()
+            )
+            return [row[0] for row in rows]
 
     def save_feedback(self, feedback: FeedbackRecord) -> None:
         with self.Session() as session:
