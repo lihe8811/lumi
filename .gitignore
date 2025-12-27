@@ -198,6 +198,9 @@ frontend/storybook-static/
 local_image_bucket/*
 !local_image_bucket/README.md
 
+# arXiv sanity sqlite
+functions/data/arxiv_sanity/arxiv_sanity.db
+
 # Import
 functions/papers
 
