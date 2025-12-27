@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 */12 * * * root /bin/sh /app/scripts/arxiv_sanity_cron.sh >> /var/log/arxiv_sanity.log 2>&1

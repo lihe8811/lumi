@@ -64,6 +64,24 @@ Batch import (edit the paper list in the script):
 python3 scripts/import_papers_local.py [--debug] [--skip_summaries]
 ```
 
+## arXiv sanity daemon
+Run a periodic ingest loop (suitable for cron or a long-running process):
+```bash
+python3 scripts/arxiv_sanity_daemon.py --interval-seconds 1800
+```
+
+Run once (for cron):
+```bash
+python3 scripts/arxiv_sanity_daemon.py --once
+```
+
+### Docker cron service
+The docker-compose setup includes an `arxiv-daemon` service that runs the ingest
+via cron every 30 minutes. To run it manually inside the container:
+```bash
+/bin/sh /app/scripts/arxiv_sanity_cron.sh
+```
+
 Backfill Lumi doc chunks (index + sections) to storage:
 ```bash
 python3 scripts/backfill_lumi_doc_chunks.py [--dry-run] [--batch-size 100] [--offset 0] [--limit 1000]

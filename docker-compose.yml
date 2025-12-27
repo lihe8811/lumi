@@ -19,6 +19,16 @@ services:
     depends_on:
       - backend
 
+  arxiv-daemon:
+    build:
+      context: ./functions
+    command:
+      ["sh", "-c", "mkdir -p /var/log && touch /var/log/arxiv_sanity.log && cron -f"]
+    env_file:
+      - .env
+    depends_on:
+      - backend
+
   frontend:
     build:
       context: ./frontend
