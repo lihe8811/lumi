@@ -69,6 +69,16 @@ Backfill Lumi doc chunks (index + sections) to storage:
 python3 scripts/backfill_lumi_doc_chunks.py [--dry-run] [--batch-size 100] [--offset 0] [--limit 1000]
 ```
 
+Backfill local PDF image mapping (skip pre-abstract images):
+```bash
+python3 scripts/backfill_local_pdf_section_images.py [--dry-run] [--batch-size 50] [--offset 0] [--limit 1000] [--skip-images 1]
+```
+
+Target a single paper id:
+```bash
+python3 scripts/backfill_local_pdf_section_images.py --paper-id local-xxxx --skip-images 1
+```
+
 ## Local PDF upload (API)
 You can upload a PDF directly via the API and track the job status:
 ```bash

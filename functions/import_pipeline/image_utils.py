@@ -29,6 +29,7 @@ import logging
 from PIL import Image
 from pypdf import PdfReader
 import pypdfium2 as pdfium
+from pdfminer.high_level import extract_text
 
 # Legacy GCS support removed; prefer COS/InMemory.
 gcs_storage = None
@@ -425,11 +426,39 @@ def extract_images_from_pdf_bytes(
     return processed_image_metadata
 
 
+def find_start_page_index(
+    pdf_bytes: bytes, headings: list[str] | None = None, max_pages: int = 5
+) -> int:
+    if not pdf_bytes:
+        return 0
+
+    normalized_headings = []
+    if headings:
+        for heading in headings:
+            cleaned = " ".join((heading or "").split()).strip()
+            if len(cleaned) >= 3:
+                normalized_headings.append(cleaned)
+
+    for i in range(max_pages):
+        try:
+            page_text = extract_text(io.BytesIO(pdf_bytes), page_numbers=[i]) or ""
+        except Exception:
+            continue
+        if re.search(r"\babstract\b", page_text, flags=re.IGNORECASE):
+            return i
+        for heading in normalized_headings:
+            if re.search(rf"\\b{re.escape(heading)}\\b", page_text, flags=re.IGNORECASE):
+                return i
+    return 0
+
+
 def extract_images_from_pdf_xobjects(
     pdf_bytes: bytes,
     image_contents: List[ImageContent],
     run_locally: bool = False,
     storage_client: StorageClient | None = None,
+    start_page: int = 0,
+    skip_images: int = 0,
 ) -> List[ImageMetadata]:
     """
     Extracts embedded images (XObjects) from a PDF and maps them to ImageContent entries.
@@ -442,18 +471,25 @@ def extract_images_from_pdf_xobjects(
     image_index = 0
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        for page in reader.pages:
+        pdf_image_index = 0
+        for page_index, page in enumerate(reader.pages):
+            if page_index < start_page:
+                continue
             try:
                 images = getattr(page, "images", [])
             except Exception:
                 images = []
 
             for image in images:
+                if pdf_image_index < skip_images:
+                    pdf_image_index += 1
+                    continue
                 if image_index >= len(image_contents):
                     break
 
                 image_content = image_contents[image_index]
                 image_index += 1
+                pdf_image_index += 1
 
                 image_bytes = getattr(image, "data", None)
                 image_ext = getattr(image, "extension", None) or "png"

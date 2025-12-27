@@ -39,7 +39,7 @@ from shared.lumi_doc import (
     FigureContent,
     LumiFootnote,
 )
-from shared.types import ArxivMetadata
+from shared.types import ArxivMetadata, ImageMetadata
 from shared.constants import (
     MAX_LATEX_CHARACTER_COUNT,
     PLACEHOLDER_PREFIX,
@@ -206,7 +206,8 @@ def import_arxiv_latex_and_pdf(
                 )
                 images.extend(fallback_images)
             if len(images) > 0:
-                image_path = images[0].storage_path
+                section_image_contents = _collect_section_image_contents(lumi_doc)
+                image_path = _pick_featured_image(images, section_image_contents)
 
     return lumi_doc, image_path
 
@@ -270,15 +271,26 @@ def import_pdf_bytes(
     lumi_doc.metadata = metadata
 
     all_image_contents = _collect_image_contents(lumi_doc)
-    if all_image_contents:
+    section_image_contents = _collect_section_image_contents(lumi_doc)
+    image_contents_to_map = section_image_contents or all_image_contents
+    if image_contents_to_map:
+        section_headings = [
+            section.heading.text
+            for section in (lumi_doc.sections or [])
+            if section.heading and section.heading.text
+        ]
+        abstract_page_index = image_utils.find_start_page_index(
+            pdf_data, headings=section_headings
+        )
         extracted_images = image_utils.extract_images_from_pdf_xobjects(
             pdf_data,
-            image_contents=all_image_contents,
+            image_contents=image_contents_to_map,
             run_locally=run_locally,
             storage_client=storage_client,
+            start_page=abstract_page_index,
         )
         if extracted_images:
-            image_path = extracted_images[0].storage_path
+            image_path = _pick_featured_image(extracted_images, section_image_contents)
 
     return lumi_doc, image_path
 
@@ -305,6 +317,44 @@ def _collect_image_contents(doc: LumiDoc) -> List[ImageContent]:
 
     collect_from_sections(doc.sections)
     return image_contents
+
+
+def _collect_section_image_contents(doc: LumiDoc) -> List[ImageContent]:
+    """Collects ImageContent objects only from sections (skips abstract)."""
+    image_contents = []
+
+    def collect_from_contents(contents: List[LumiContent]):
+        for content in contents:
+            if content.image_content:
+                image_contents.append(content.image_content)
+            if content.figure_content:
+                image_contents.extend(content.figure_content.images)
+
+    def collect_from_sections(sections: List[LumiSection]):
+        for section in sections:
+            collect_from_contents(section.contents)
+            if section.sub_sections:
+                collect_from_sections(section.sub_sections)
+
+    collect_from_sections(doc.sections)
+    return image_contents
+
+
+def _pick_featured_image(
+    images: List[ImageMetadata], preferred_contents: List[ImageContent]
+) -> str:
+    if not images:
+        return ""
+    preferred_paths = [
+        content.storage_path
+        for content in preferred_contents
+        if content.storage_path
+    ]
+    preferred_set = set(preferred_paths)
+    for image in images:
+        if image.storage_path in preferred_set:
+            return image.storage_path
+    return images[0].storage_path
 
 
 def convert_model_output_to_lumi_doc(
