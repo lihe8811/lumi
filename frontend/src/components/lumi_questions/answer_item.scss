@@ -101,10 +101,16 @@ answer-item {
   .question-text {
     @include common.flex-row-align-center;
     gap: common.$spacing-medium;
-    @include common.overflow-ellipsis;
-    @include typescale.title-medium;
+    @include typescale.body-small;
+    color: var(--md-sys-color-primary);
 
     -webkit-text-size-adjust: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: auto;
 
     transition: opacity 0.25s ease;
     -moz-transition: opacity 0.25s ease;
@@ -126,6 +132,17 @@ answer-item {
 
 .answer {
   padding: 0 $history-item-horizontal-padding common.$spacing-xl;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: auto;
+
+  .content-renderer-container {
+    .main-content {
+      word-break: normal;
+      overflow-wrap: normal;
+      hyphens: auto;
+    }
+  }
 }
 
 .mentions-text {

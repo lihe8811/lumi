@@ -50,7 +50,7 @@ export class AnswerHighlightManager extends HighlightManagerBase {
    * Adds highlights from a single new answer.
    */
   addAnswer(answer: LumiAnswer) {
-    if (!answer.request.highlightedSpans) {
+    if (!answer.request?.highlightedSpans) {
       return;
     }
 

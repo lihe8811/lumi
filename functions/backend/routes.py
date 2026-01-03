@@ -48,6 +48,11 @@ from backend.storage import StorageClient
 from backend.doc_chunks import build_doc_index, find_section_by_id
 from backend.config import get_settings
 from models import api_config
+from answers.answers import generate_lumi_answer
+from shared.api import LumiAnswerRequest, HighlightSelection, ImageInfo
+from shared.lumi_doc import Position
+from shared.lumi_doc_convert import doc_from_dict
+from shared.json_utils import convert_keys
 from shared.types import LoadingStatus
 
 import logging
@@ -221,18 +226,54 @@ def get_arxiv_metadata(
 def get_lumi_response(
     payload: AnswerRequest, db: DbClient = Depends(get_db_client)
 ):
-    """
-    Placeholder implementation returning a stub answer.
-    """
-    answer = {
-        "id": uuid4().hex,
-        "query": payload.query,
-        "highlight": payload.highlight,
-        "timestamp": int(time.time() * 1000),
-        "response_content": [],
-    }
+    doc_tuple = db.get_lumi_doc(payload.arxiv_id, payload.version)
+    if not doc_tuple:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc_json, _ = doc_tuple
+
+    settings = get_settings()
+    if settings.gemini_api_key:
+        api_config.DEFAULT_API_KEY = settings.gemini_api_key
+        os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
+        os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
+
+    highlighted = []
+    for item in payload.highlighted_spans or []:
+        position = item.get("position") or {}
+        highlighted.append(
+            HighlightSelection(
+                span_id=item.get("span_id") or item.get("spanId") or "",
+                position=Position(
+                    start_index=position.get("start_index")
+                    or position.get("startIndex")
+                    or 0,
+                    end_index=position.get("end_index")
+                    or position.get("endIndex")
+                    or 0,
+                ),
+            )
+        )
+
+    image_info = None
+    if payload.image:
+        image_info = ImageInfo(
+            image_storage_path=payload.image.get("image_storage_path")
+            or payload.image.get("imageStoragePath")
+            or "",
+            caption=payload.image.get("caption"),
+        )
+
+    request = LumiAnswerRequest(
+        query=payload.query,
+        highlight=payload.highlight,
+        highlighted_spans=highlighted or None,
+        image=image_info,
+    )
+    lumi_doc = doc_from_dict(doc_json)
+    answer = generate_lumi_answer(lumi_doc, request, settings.gemini_api_key)
+    answer_json = convert_keys(asdict(answer), "snake_to_camel")
     return AnswerResponse(
-        arxiv_id=payload.arxiv_id, version=payload.version, answer=answer
+        arxiv_id=payload.arxiv_id, version=payload.version, answer=answer_json
     )
 
 

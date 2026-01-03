@@ -163,18 +163,15 @@ export class AnswerItem extends LightMobxLitElement {
   }
 
   private renderHighlightedText() {
-    const highlightedSpans = this.answer.request.highlightedSpans;
-    if (
-      !this.answer.request.highlight ||
-      !highlightedSpans ||
-      highlightedSpans.length === 0
-    ) {
+    const request = this.answer.request;
+    const highlightedSpans = request?.highlightedSpans;
+    if (!request?.highlight || !highlightedSpans || highlightedSpans.length === 0) {
       return nothing;
     }
 
     return html`
-      <div class="highlight" .title=${this.answer.request.highlight}>
-        <span>"${this.answer.request.highlight}"</span>
+      <div class="highlight" .title=${request.highlight}>
+        <span>"${request.highlight}"</span>
         <pr-icon-button
           icon="arrow_forward"
           color="tertiary"
@@ -201,7 +198,7 @@ export class AnswerItem extends LightMobxLitElement {
       `;
     }
 
-    return html`<div class="answer">
+    return html`<div class="answer" lang="en">
       ${this.answer.responseContent.map((content: LumiContent) => {
         return html`<lumi-content
           .content=${content}

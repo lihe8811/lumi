@@ -159,7 +159,7 @@ export class HistoryService extends Service {
   }
 
   private updateAnswerSpansMap(answer: LumiAnswer) {
-    const spans = getAllSpansFromContents(answer.responseContent);
+    const spans = getAllSpansFromContents(answer.responseContent ?? []);
     for (const span of spans) {
       this.spanIdToAnswerIdMap.set(span.id, answer.id);
     }

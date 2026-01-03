@@ -236,13 +236,20 @@ export class LumiQuestions extends LightMobxLitElement {
     const docId = this.getDocId();
     if (!docId) return nothing;
 
-    const answersToRender = this.getAnswersToRender(docId);
+    const answersToRender = this.getAnswersToRender(docId).filter(
+      (answer) =>
+        Boolean(answer.request?.query || answer.request?.highlight || answer.request?.image) ||
+        (answer.responseContent?.length ?? 0) > 0
+    );
 
     const personalSummary = docId
       ? this.historyService.personalSummaries.get(docId)
       : undefined;
 
-    if (answersToRender.length === 0 && !personalSummary) {
+    const hasPersonalSummary =
+      (personalSummary?.responseContent?.length ?? 0) > 0;
+
+    if (answersToRender.length === 0 && !hasPersonalSummary) {
       return nothing;
     }
 
@@ -254,7 +261,7 @@ export class LumiQuestions extends LightMobxLitElement {
         ${answersToRender.map((answer: LumiAnswer) => {
           return this.renderAnswer(answer);
         })}
-        ${personalSummary
+        ${hasPersonalSummary && personalSummary
           ? this.renderAnswer(
               personalSummary,
               SIDEBAR_PERSONAL_SUMMARY_TOOLTIP_TEXT

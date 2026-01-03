@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+from pydantic import ConfigDict
 
 
 class RequestImportPayload(BaseModel):
@@ -41,11 +42,12 @@ class MetadataResponse(BaseModel):
 
 
 class AnswerRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     arxiv_id: str
     version: str
     query: Optional[str] = None
     highlight: Optional[str] = None
-    highlighted_spans: Optional[list] = None
+    highlighted_spans: Optional[list] = Field(default=None, alias="highlightedSpans")
     image: Optional[dict] = None
 
 

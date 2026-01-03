@@ -48,6 +48,12 @@ export interface LumiDocSectionResponse {
   section: any;
 }
 
+export interface LumiAnswerResponse {
+  arxiv_id: string;
+  version: string;
+  answer: LumiAnswer;
+}
+
 export interface ListPapersResponse {
   papers: { arxiv_id: string; version: string; metadata?: any }[];
 }
@@ -162,11 +168,16 @@ export class BackendApiService extends Service {
     version: string,
     request: LumiAnswerRequest
   ): Promise<LumiAnswer> {
-    return this.request("/api/get_lumi_response", "POST", {
+    const response = await this.request<LumiAnswerResponse>(
+      "/api/get_lumi_response",
+      "POST",
+      {
       arxiv_id: arxivId,
       version,
       ...request,
-    });
+      }
+    );
+    return response.answer;
   }
 
   async getPersonalSummary(
